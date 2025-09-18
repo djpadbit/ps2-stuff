@@ -1,3 +1,4 @@
+#include <blocks.h>
 #include <chunk_data.h>
 #include <math.h>
 #include <stdio.h>
@@ -6,31 +7,36 @@
 int chunkdata_init(chunkdata_t *data, s64 x, s64 z) {
 	if (!data)
 		return -1;
-	data->ready = 0;
+	data->xoffset = 0;
 	data->x = x;
 	data->z = z;
-	memset(data, 0, sizeof(data->data));
+	memset(data, BLOCK_AIR, sizeof(data->data));
 	return 0;
 }
 
 int chunkdata_ready(chunkdata_t *data) {
-	return data ? data->ready : 0;
+	return data ? data->xoffset == 16 : 0;
 }
 
-int chunkdata_generate(chunkdata_t *data) {
-	if (!data)
-		return -1;
+int chunkdata_generate(chunkdata_t *data, int budget) {
+	if (!data || chunkdata_ready(data))
+		return budget;
 
-	for (u8 x=0;x<CHUNK_WIDTH;x++) {
+	for (;data->xoffset<CHUNK_WIDTH;data->xoffset++) {
+		if (budget == 0)
+			return 0;
+
 		for (u8 z=0;z<CHUNK_DEPTH;z++) {
-			float height = ((float)WORLD_HEIGHT)/2.0f + (((float)WORLD_HEIGHT)/16.0f) * (cosf(((float)data->x + x) / 16.0f) * cosf(((float)data->z + z) / 16.0f));
+			float height = ((float)WORLD_HEIGHT)/2.0f + (((float)WORLD_HEIGHT)/16.0f) * (cosf(((float)data->x + data->xoffset) / 16.0f) * cosf(((float)data->z + z) / 16.0f));
 			int height_blk = height > 0 ? height : 1;
 
-			memset(data->data[x][z], 3, height_blk-1);
-			data->data[x][z][height_blk] = 2;
+			for (u8 y=0;y<height_blk;y++)
+				data->data[data->xoffset][z][y] = BLOCK_DIRT;
+			data->data[data->xoffset][z][height_blk] = BLOCK_GRASS;
 		}
-	}
-	data->ready = 1;
 
-	return 0;
+		budget--;
+	}
+
+	return budget;
 }

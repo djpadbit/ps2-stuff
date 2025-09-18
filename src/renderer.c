@@ -19,7 +19,7 @@ int renderer_init(renderer_t *rend) {
 
 	// Initialize vif packets
 	for (int i=0;i<2;i++) {
-		if (!packet2_init(&rend->vif_packets[i], NULL, NULL, /*11*/1024, P2_TYPE_NORMAL, P2_MODE_CHAIN, 1))
+		if (!packet2_init(&rend->vif_packets[i], NULL, NULL, RENDERER_VIF_PCKT_MAX_QWORDS, P2_TYPE_NORMAL, P2_MODE_CHAIN, 1))
 			return -1;
 	}
 	// Init clear packet

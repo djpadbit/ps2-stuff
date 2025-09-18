@@ -27,6 +27,9 @@ typedef struct {
 } mesh_t;
 
 int mesh_create(mesh_t *mesh, u32 count);
+void mesh_init(mesh_t *mesh, u32 count, qvert_t *verts);
+// Doesn't zero out all the mesh data
+void mesh_update(mesh_t *mesh, u32 count, qvert_t *verts);
 void mesh_set_quad_prim(mesh_t *mesh, texbuffer_t *tbuff);
 void mesh_draw(mesh_t *mesh, renderer_t *rend);
 

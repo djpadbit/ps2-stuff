@@ -12,11 +12,12 @@
 typedef struct {
 	u32 data[CHUNK_WIDTH][CHUNK_DEPTH][WORLD_HEIGHT];
 	s64 x,z;
-	u8 ready;
+	u8 xoffset;
 } chunkdata_t;
 
 int chunkdata_init(chunkdata_t *data, s64 x, s64 z);
 int chunkdata_ready(chunkdata_t *data);
-int chunkdata_generate(chunkdata_t *data);
+// Returns the remaining budget, budget can be -1 for U32_MAX max ops
+int chunkdata_generate(chunkdata_t *data, int budget);
 
 #endif

@@ -9,9 +9,7 @@
 # VU1 and libpacket2 showcase.
 */
 
-#include "chunk_data.h"
-#include "input_manager.h"
-#include "math3d.h"
+#include <math3d.h>
 #include <math.h>
 #include <stdio.h>
 #include <kernel.h>
@@ -28,6 +26,9 @@
 #include <resources.h>
 #include <sifrpc.h>
 
+#include <chunk_data.h>
+#include <chunk_manager.h>
+#include <input_manager.h>
 #include <renderer.h>
 #include <mesh.h>
 #include <qdisp.h>
@@ -58,12 +59,9 @@ extern u32 VU1Draw3D_CodeStart __attribute__((section(".vudata")));
 extern u32 VU1Draw3D_CodeEnd __attribute__((section(".vudata")));
 
 renderer_t renderer;
-mesh_t cube_mesh;
+//mesh_t cube_mesh;
 input_manager_t input_man;
-
-#define CHUNK_VIEWDIST 4
-// Account for border chunks
-chunkdata_t chunks[(CHUNK_VIEWDIST+1)*(CHUNK_VIEWDIST+1)];
+chunk_manager_t chunk_man;
 
 static inline float remap_stick(u8 input) {
 	if (input > 127-10 && input <= 127+10)
@@ -79,9 +77,9 @@ static inline float remap_stick(u8 input) {
 #define DEGS(val) ((val)*(180.0f/3.14f))
 #define M_PIf		3.14159265358979323846f
 
-void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp)
+void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_manager_t *chunks)
 {
-	int cube_cnt = 1000;
+	/*int cube_cnt = 1000;
 	mesh_create(&cube_mesh, 4*6*cube_cnt);
 
 	mesh_set_quad_prim(&cube_mesh, texbuff);
@@ -95,7 +93,7 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp)
 			vert_idx += qdisp_put_dir(cube_mesh.vertices + vert_idx, pos, face, face == FC_UP ? 0 : face == FC_DOWN ? 2 : 3);
 	}
 	printf("Final vert count: %d\n", vert_idx);
-	printf("memory size: %d\n", cube_cnt*4*6*sizeof(qvert_t));
+	printf("memory size: %d\n", cube_cnt*4*6*sizeof(qvert_t));*/
 
 	// Camera look angles
 	float verticalAngle = 0.0f;
@@ -104,6 +102,8 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp)
 	direction[3] = 0.0f;
 	right[1] = 0.0f;
 	right[3] = 0.0f;
+
+	printf("Start of render loop\n");
 
 	// The main loop...
 	for (;;) {
@@ -177,13 +177,30 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp)
 		renderer_update_matrices(rend);
 		renderer_clear(rend);
 
-		for (int i = 0; i < 1; i++) {
+		// Update position for the chunk mananger
+		chunk_manager_update_pos(chunks, rend->camera_pos[0] / CHUNK_WIDTH, rend->camera_pos[2] / CHUNK_DEPTH);
+		// Work a little bit on the chunks and stuff
+		int budget = chunk_manager_work(chunks, 512);
+
+		int cnt = 0;
+		// Draw all the visible chunks
+		for (int i=0;i<CHUNK_COMPILED_COUNT;i++) {
+			// Not compiled or empty
+			if (chunk_manager_chunk_empty(&chunk_man, i))
+				continue;
+
+			mesh_draw(&chunks->meshes[i], rend);
+			cnt++;
+		}
+
+		printf("Budget left: %d meshes drawn: %d\n", budget, cnt);
+		/*for (int i = 0; i < 1; i++) {
 			cube_mesh.pos[0] = i * 40.0F;
 			for (int j = 0; j < 5; j++) {
 				cube_mesh.pos[1] = j * 40.0F;
 				mesh_draw(&cube_mesh, rend);
 			}
-		}
+		}*/
 
 		graph_wait_vsync();
 	}
@@ -194,8 +211,10 @@ int main(int argc, char *argv[])
 	// Init DMA channels.
 	dma_channel_initialize(DMA_CHANNEL_GIF, NULL, 0);
 	dma_channel_initialize(DMA_CHANNEL_VIF1, NULL, 0);
+	//dma_channel_initialize(DMA_CHANNEL_VIF0, NULL, 0);
 	dma_channel_fast_waits(DMA_CHANNEL_GIF);
 	dma_channel_fast_waits(DMA_CHANNEL_VIF1);
+	//dma_channel_fast_waits(DMA_CHANNEL_VIF0);
 
 	// Init the SIF RPC
 	sceSifInitRpc(0);
@@ -212,7 +231,7 @@ int main(int argc, char *argv[])
 	// Upload VU1 quad code
 	renderer_upload_vu1(&renderer, &VU1Draw3D_CodeStart, &VU1Draw3D_CodeEnd, 8, 496);
 
-	SETVECTOR(renderer.camera_pos, 0.00f, 0.00f, -40.00f, 1.00f);
+	SETVECTOR(renderer.camera_pos, 0.00f, 128.00f, -40.00f, 1.00f);
 	SETVECTOR(renderer.camera_rot, 0.00f, 0.00f, M_PIf, 1.00f); // flip upside down...
 
 	renderer_setup(&renderer, 640, 512);
@@ -221,17 +240,10 @@ int main(int argc, char *argv[])
 	texbuffer_t texture;
 	renderer_load_texture(&texture, 256, GS_PSM_32, terrain);
 
-	// Generate all the chunks
-	printf("Generating chunks\n");
-	for (int i=0;i<(CHUNK_VIEWDIST+1)*(CHUNK_VIEWDIST+1);i++) {
-		s64 x = ((i%(CHUNK_VIEWDIST+1)) - ((CHUNK_VIEWDIST+1)/2)) * CHUNK_WIDTH;
-		s64 z = ((i/(CHUNK_VIEWDIST+1)) - ((CHUNK_VIEWDIST+1)/2)) * CHUNK_DEPTH;
-		printf("%d (%lld,%lld)\n", i, x, z);
-		chunkdata_init(&chunks[i], x, z);
-		chunkdata_generate(&chunks[i]);
-	}
+	// Init all the chunks
+	chunk_manager_init(&chunk_man, &texture);
 
-	render(&renderer, &texture, &input_man);
+	render(&renderer, &texture, &input_man, &chunk_man);
 
 	// Sleep
 	SleepThread();

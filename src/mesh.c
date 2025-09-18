@@ -1,6 +1,8 @@
+#include "qdisp.h"
 #include <renderer.h>
 #include <mesh.h>
 
+#include <assert.h>
 #include <string.h>
 #include <malloc.h>
 #include <draw.h>
@@ -27,6 +29,23 @@ int mesh_create(mesh_t *mesh, u32 count) {
 	mesh->vert_count = count;
 
 	return 0;
+}
+
+void mesh_init(mesh_t *mesh, u32 count, qvert_t *verts) {
+	if (!mesh)
+		return;
+
+	memset(mesh, 0, sizeof(mesh_t));
+
+	mesh_update(mesh, count, verts);
+	
+}
+
+void mesh_update(mesh_t *mesh, u32 count, qvert_t *verts) {
+	if (!mesh)
+		return;
+	mesh->vert_count = count;
+	mesh->vertices = verts;
 }
 
 void mesh_set_quad_prim(mesh_t *mesh, texbuffer_t *tbuff) {
@@ -75,7 +94,7 @@ void mesh_draw(mesh_t *mesh, renderer_t *rend) {
 	packet2_t *packet = renderer_get_vif_packet(rend);
 	packet2_reset(packet, 0);
 
-	// Add extra data at the top if needed
+	// Add extra data at start of vu mem if needed
 	if (mesh->vu1_extra_data != NULL && mesh->vu1_extra_data_size != 0)
 		packet2_utils_vu_add_unpack_data(packet, 0, mesh->vu1_extra_data, mesh->vu1_extra_data_size, 0);
 
@@ -147,6 +166,9 @@ void mesh_draw(mesh_t *mesh, renderer_t *rend) {
 		}
 		vif_added_qw = 0;
 		vert_drawn += to_draw;
+
+		// If this gets triggered we already are over by a bit (+1 for end tag)
+		assert(packet2_get_qw_count(packet)+1 <= RENDERER_VIF_PCKT_MAX_QWORDS);
 	}
 
 	packet2_utils_vu_add_end_tag(packet);

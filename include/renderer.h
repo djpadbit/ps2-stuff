@@ -5,6 +5,8 @@
 #include <math3d.h>
 #include <draw_buffers.h>
 
+#define RENDERER_VIF_PCKT_MAX_QWORDS 1024
+
 typedef struct {
 	packet2_t vif_packets[2];
 	packet2_t clear_packet;
