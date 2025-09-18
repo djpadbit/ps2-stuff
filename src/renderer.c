@@ -1,3 +1,6 @@
+#include <assert.h>
+#include <math.h>
+#include <math3d.h>
 #include <renderer.h>
 
 #include <string.h>
@@ -35,7 +38,7 @@ int renderer_setup(renderer_t *rend, u16 width, u16 height) {
 
 	// Define a 32-bit framebuffer.
 	rend->fb.width = width;
-	rend->fb.height = 512;
+	rend->fb.height = height;
 	rend->fb.mask = 0;
 	rend->fb.psm = GS_PSM_32;
 	rend->fb.address = graph_vram_allocate(width, height, rend->fb.psm, GRAPH_ALIGN_PAGE);
@@ -47,8 +50,10 @@ int renderer_setup(renderer_t *rend, u16 width, u16 height) {
 	rend->zbuff.zsm = GS_ZBUF_32;
 	rend->zbuff.address = graph_vram_allocate(width, height, rend->zbuff.zsm, GRAPH_ALIGN_PAGE);
 
-	printf("Vram used frame: %d\n", graph_vram_size(rend->fb.width, rend->fb.height, rend->fb.psm, GRAPH_ALIGN_PAGE));
-	printf("Vram used zbuff: %d\n", graph_vram_size(rend->fb.width, rend->fb.height, rend->zbuff.zsm, GRAPH_ALIGN_PAGE));
+	printf("Vram used frame: %d (%d)\n", graph_vram_size(rend->fb.width, rend->fb.height, rend->fb.psm, GRAPH_ALIGN_PAGE), rend->fb.address);
+	printf("Vram used zbuff: %d (%d)\n", graph_vram_size(rend->fb.width, rend->fb.height, rend->zbuff.zsm, GRAPH_ALIGN_PAGE), rend->zbuff.address);
+
+	assert(((int)rend->fb.address) >= 0 && ((int)rend->zbuff.address) >= 0);
 
 	// Set a default interlaced video mode with flicker filter.
 	graph_set_mode(GRAPH_MODE_INTERLACED, GRAPH_MODE_NTSC, GRAPH_MODE_FIELD, GRAPH_ENABLE);
@@ -64,7 +69,7 @@ int renderer_setup(renderer_t *rend, u16 width, u16 height) {
 	graph_enable_output();
 
 	// Create the view_screen matrix.
-	create_view_screen(rend->view_screen, graph_aspect_ratio(), -3.00f, 3.00f, -3.00f, 3.00f, 1.00f, 2000.00f);
+	renderer_set_perspective(rend, RENDERER_DEFAULT_FOV, RENDERER_DEFAULT_NEAR, RENDERER_DEFAULT_FAR);
 
 	// Create clear packet
 	// Clear framebuffer but don't update zbuffer.
@@ -80,7 +85,7 @@ int renderer_setup(renderer_t *rend, u16 width, u16 height) {
 	packet2_update(packet2, draw_setup_environment(packet2->next, 0, &rend->fb, &rend->zbuff));
 
 	// Now reset the primitive origin to 2048-width/2,2048-height/2.
-	packet2_update(packet2, draw_primitive_xyoffset(packet2->next, 0, (2048 - width/2), (2048 - height/2)));
+	packet2_update(packet2, draw_primitive_xyoffset(packet2->next, 0, (2048 - width/2.0f), (2048 - height/2.0f)));
 
 	// Finish setting up the environment.
 	packet2_update(packet2, draw_finish(packet2->next));
@@ -130,8 +135,10 @@ int renderer_load_texture(texbuffer_t *texbuf, u16 width, u32 psm, u8 *data) {
 	texbuf->info.width = draw_log2(width);
 	texbuf->info.height = draw_log2(width);
 	texbuf->info.components = psm == GS_PSM_32 ? TEXTURE_COMPONENTS_RGBA : TEXTURE_COMPONENTS_RGB;
-	texbuf->info.function = TEXTURE_FUNCTION_DECAL;
-	printf("Vram used textu: %d\n", graph_vram_size(texbuf->width, texbuf->width, texbuf->psm, GRAPH_ALIGN_BLOCK));
+	texbuf->info.function = TEXTURE_FUNCTION_MODULATE;
+	printf("Vram used textu: %d (%d)\n", graph_vram_size(texbuf->width, texbuf->width, texbuf->psm, GRAPH_ALIGN_BLOCK), texbuf->address);
+
+	assert(((int)texbuf->address) >= 0);
 
 	// Send the texture to the GS
 	packet2_t *packet2 = packet2_create(50, P2_TYPE_NORMAL, P2_MODE_CHAIN, 0);
@@ -157,8 +164,86 @@ void renderer_clear(renderer_t *rend) {
 	draw_wait_finish();
 }
 
+void renderer_set_perspective(renderer_t *rend, float vfov, float near, float far) {
+	/*float f = 1.0f / tanf((vfov/2.0f) * M_PI/180.0f);
+
+	// construct an OpenGL-style projection matrix
+	float c = (far + near) / (far - near);
+	float d = (2.0f * far * near) / (far - near);
+
+	rend->view_screen[ 0] = f*graph_aspect_ratio(); rend->view_screen[ 4] = 0.0f;  rend->view_screen[ 8] = 0.0f;  rend->view_screen[12] = 0.0f;
+	rend->view_screen[ 1] = 0.0f                  ; rend->view_screen[ 5] = f;     rend->view_screen[ 9] = 0.0f;  rend->view_screen[13] = 0.0f;
+	rend->view_screen[ 2] = 0.0f                  ; rend->view_screen[ 6] = 0.0f;  rend->view_screen[10] = c;     rend->view_screen[14] = d;
+	rend->view_screen[ 3] = 0.0f                  ; rend->view_screen[ 7] = 0.0f;  rend->view_screen[11] = -1.0f; rend->view_screen[15] = 0.0f;*/
+
+	float top = near * tanf(vfov/2.0f * M_PI/180.0f);
+	float bottom = -top;
+	float right = top;
+	float left = -right;
+
+	create_view_screen(rend->view_screen, graph_aspect_ratio(), left, right, bottom, top, near, far);
+	//create_view_screen(rend->view_screen, graph_aspect_ratio(), -3.00f, 3.00f, -3.00f, 3.00f, 1.00f, 2000.00f);
+
+#define MAT_IDX(col,row) (row*4+col)
+	for (int i = 4; i--; ) { rend->frustum[5][i] = rend->view_screen[MAT_IDX(i,3)] + rend->view_screen[MAT_IDX(i,0)]; }
+	for (int i = 4; i--; ) { rend->frustum[4][i] = rend->view_screen[MAT_IDX(i,3)] - rend->view_screen[MAT_IDX(i,0)]; }
+	for (int i = 4; i--; ) { rend->frustum[2][i] = rend->view_screen[MAT_IDX(i,3)] + rend->view_screen[MAT_IDX(i,1)]; }
+	for (int i = 4; i--; ) { rend->frustum[3][i] = rend->view_screen[MAT_IDX(i,3)] - rend->view_screen[MAT_IDX(i,1)]; }
+	for (int i = 4; i--; ) { rend->frustum[0][i] = rend->view_screen[MAT_IDX(i,3)] + rend->view_screen[MAT_IDX(i,2)]; }
+	for (int i = 4; i--; ) { rend->frustum[1][i] = rend->view_screen[MAT_IDX(i,3)] - rend->view_screen[MAT_IDX(i,2)]; }
+#undef MAT_IDX
+
+	for (int i=0;i<6;i++) {
+		float invlen = 1.0f / sqrtf(rend->frustum[i][0] * rend->frustum[i][0] + rend->frustum[i][1] * rend->frustum[i][1] + rend->frustum[i][2] * rend->frustum[i][2]);
+		rend->frustum[i][0] *= invlen;
+		rend->frustum[i][1] *= invlen;
+		rend->frustum[i][2] *= invlen;
+		rend->frustum[i][3] *= invlen;
+	}
+
+}
+
 void renderer_update_matrices(renderer_t *rend) {
 	create_world_view(rend->world_view, rend->camera_pos, rend->camera_rot);
+}
+
+static u8 renderer_check_box_plane(VECTOR plane, VECTOR center, VECTOR extents) {
+	// Compute the projection interval radius of b onto L(t) = b.c + t * p.n
+	const float r = extents[0] * fabsf(plane[0]) +
+			extents[1] * fabsf(plane[1]) + extents[2] * fabsf(plane[2]);
+
+	return -r <= ((plane[0] * center[0] + plane[1] * center[1] + plane[2] * center[2]) - plane[3]);
+}
+
+static inline void vector_scale(VECTOR out, VECTOR in1, float scale) {
+	out[0] = in1[0]*scale;
+	out[1] = in1[1]*scale;
+	out[2] = in1[2]*scale;
+	out[3] = in1[3]*scale;
+}
+
+u8 renderer_check_box_frustum(renderer_t *rend, VECTOR min, VECTOR size) {
+	VECTOR max;
+	VECTOR newmin;
+	vector_add(max, min, size);
+	vector_apply(newmin, min, rend->world_view);
+	vector_apply(max, max, rend->world_view);
+
+	VECTOR center;
+	vector_add(center, max, newmin);
+	vector_scale(center, center, 0.5f);
+
+	VECTOR extents;
+	vector_scale(extents, center, -1.0f);
+	vector_add(extents, extents, max);
+	
+	return  !(renderer_check_box_plane(rend->frustum[0], center, extents) &&
+			renderer_check_box_plane(rend->frustum[1], center, extents) &&
+			renderer_check_box_plane(rend->frustum[2], center, extents) &&
+			renderer_check_box_plane(rend->frustum[3], center, extents) &&
+			renderer_check_box_plane(rend->frustum[4], center, extents) &&
+			renderer_check_box_plane(rend->frustum[5], center, extents));
+
 }
 
 packet2_t *renderer_get_vif_packet(renderer_t *rend) {

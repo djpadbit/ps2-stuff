@@ -25,6 +25,7 @@
 #include <draw.h>
 #include <resources.h>
 #include <sifrpc.h>
+#include <time.h>
 
 #include <chunk_data.h>
 #include <chunk_manager.h>
@@ -77,6 +78,8 @@ static inline float remap_stick(u8 input) {
 #define DEGS(val) ((val)*(180.0f/3.14f))
 #define M_PIf		3.14159265358979323846f
 
+const VECTOR chunk_extends = {CHUNK_WIDTH, CHUNK_DEPTH, CHUNK_HEIGHT, 0.0f};
+
 void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_manager_t *chunks)
 {
 	/*int cube_cnt = 1000;
@@ -105,8 +108,11 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 
 	printf("Start of render loop\n");
 
+
+	clock_t last_time = clock();
 	// The main loop...
 	for (;;) {
+		clock_t start_time = clock();
 		// Spin the cube a bit.
 		/*cube_mesh.rot[0] += 0.008f;
 		while (cube_mesh.rot[0] > 3.14f)
@@ -167,8 +173,9 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 		rend->camera_pos[1] += direction[1] * (ljoyv * speed) + right[1] * (ljoyh * speed);
 		rend->camera_pos[2] += direction[2] * (ljoyv * speed) + right[2] * (ljoyh * speed);
 
-		//printf("(%.2f,%.2f,%.2f) (%.2f,%.2f,%.2f)\n", rend->camera_pos[0], rend->camera_pos[1], rend->camera_pos[2],
-		//									DEGS(rend->camera_rot[0]), DEGS(rend->camera_rot[1]), DEGS(rend->camera_rot[2]));
+		/*printf("(%.2f,%.2f,%.2f) (%.2f,%.2f,%.2f)\n", rend->camera_pos[0], rend->camera_pos[1], rend->camera_pos[2],
+											DEGS(rend->camera_rot[0]), DEGS(rend->camera_rot[1]), DEGS(rend->camera_rot[2]));
+		*/
 
 		//printf("(%.2f,%.2f) (%.2f,%.2f)\n", ljoyh, ljoyv, rjoyh, rjoyv);
 		//printf("btn: %x, ljoy: (%x,%x), rjoy: (%x,%x)\n", inp->buttons.btns, inp->buttons.ljoy_h,inp->buttons.ljoy_v, inp->buttons.rjoy_h,inp->buttons.rjoy_v);
@@ -178,22 +185,34 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 		renderer_clear(rend);
 
 		// Update position for the chunk mananger
-		chunk_manager_update_pos(chunks, rend->camera_pos[0] / CHUNK_WIDTH, rend->camera_pos[2] / CHUNK_DEPTH);
+		chunk_manager_update_pos(chunks, rend->camera_pos[0], rend->camera_pos[2]);
 		// Work a little bit on the chunks and stuff
-		int budget = chunk_manager_work(chunks, 512);
+		int budget = chunk_manager_work(chunks, 1024);
 
-		int cnt = 0;
+		int cntFrust = 0;
+		int cntnFrsut = 0;
 		// Draw all the visible chunks
 		for (int i=0;i<CHUNK_COMPILED_COUNT;i++) {
 			// Not compiled or empty
 			if (chunk_manager_chunk_empty(&chunk_man, i))
 				continue;
 
+			u8 in_frust = renderer_check_box_frustum(rend, chunks->meshes[i].pos, (float*)chunk_extends);
+			//chunks->meshes[i].color.val = in_frust ? 0x80008000 : 0x80000080;
+			if (in_frust)
+				cntFrust++;
+			else {
+				cntnFrsut++;
+				continue;
+			}
+			
+
+
 			mesh_draw(&chunks->meshes[i], rend);
-			cnt++;
+			//cnt++;
 		}
 
-		printf("Budget left: %d meshes drawn: %d\n", budget, cnt);
+		//printf("Budget left: %d meshes drawn: %d\n", budget, cnt);
 		/*for (int i = 0; i < 1; i++) {
 			cube_mesh.pos[0] = i * 40.0F;
 			for (int j = 0; j < 5; j++) {
@@ -201,6 +220,12 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 				mesh_draw(&cube_mesh, rend);
 			}
 		}*/
+
+		clock_t end_time = clock();
+
+		printf("%ldus / %ldus (%.2f,%.2f,%.2f) (%.2f,%.2f,%.2f) %d/%d\n", end_time-start_time, start_time-last_time, rend->camera_pos[0], rend->camera_pos[1], rend->camera_pos[2],
+											DEGS(rend->camera_rot[0]), DEGS(rend->camera_rot[1]), DEGS(rend->camera_rot[2]), cntFrust, cntnFrsut);
+		last_time = start_time;
 
 		graph_wait_vsync();
 	}

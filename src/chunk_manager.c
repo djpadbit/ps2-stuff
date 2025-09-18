@@ -47,6 +47,19 @@ static int chunk_manager_find_compiled_idx(chunk_manager_t *chunk_man, s64 x, s6
 	return -1;
 }
 
+static int chunk_manager_find_data_idx(chunk_manager_t *chunk_man, s64 x, s64 z) {
+	if (!chunk_man)
+		return -1;
+
+	for (int i=0;i<CHUNK_DATA_COUNT;i++) {
+		if (chunk_man->chunks[i].x == x && chunk_man->chunks[i].z == z)
+			return i; 
+	}
+
+	return -1;
+}
+
+
 static inline u8 chunk_manager_should_not_render(u8 idx) {
 	return idx == BLOCK_AIR;
 }
@@ -179,7 +192,6 @@ void chunk_manager_init(chunk_manager_t *chunk_man, texbuffer_t *texture) {
 			chunk_man->compiled_pos[i].x = x;
 			chunk_man->compiled_pos[i].z = z;
 		}
-		//chunkdata_generate(&chunk_man->chunks[i], -1);
 	}
 
 	// Init meshes
@@ -214,5 +226,86 @@ int chunk_manager_work(chunk_manager_t *chunk_man, int budget) {
 }
 
 void chunk_manager_update_pos(chunk_manager_t *chunk_man, s64 x, s64 z) {
+	if (!chunk_man)
+		return;
+	return;
+	x = (x/CHUNK_WIDTH)*CHUNK_WIDTH;
+	z = (z/CHUNK_DEPTH)*CHUNK_DEPTH;
 
+	if (x == chunk_man->old_x && z == chunk_man->old_z)
+		return;
+
+	chunk_man->old_x = x;
+	chunk_man->old_z = z;
+
+	u16 comp_needed[CHUNK_COMPILED_COUNT];
+	u16 data_needed[CHUNK_DATA_COUNT];
+
+	for (int i=0;i<CHUNK_DATA_COUNT;i++) {
+		data_needed[i] = 0;
+		if (i < CHUNK_COMPILED_COUNT_PLANE)
+			comp_needed[i] = 0;
+	}
+
+	for (int i=0;i<CHUNK_DATA_COUNT;i++) {
+		x = chunk_man->old_x + ((i%(CHUNK_VIEWDIST+2)) - ((CHUNK_VIEWDIST+2)/2)) * CHUNK_WIDTH;
+		z = chunk_man->old_z + ((i/(CHUNK_VIEWDIST+2)) - ((CHUNK_VIEWDIST+2)/2)) * CHUNK_DEPTH;
+
+		int cdat_idx = chunk_manager_find_data_idx(chunk_man, x, z);
+		if (cdat_idx != -1)
+			data_needed[cdat_idx] = 1; 
+
+		if (i < CHUNK_COMPILED_COUNT_PLANE) {
+			x = chunk_man->old_x + ((i%(CHUNK_VIEWDIST)) - ((CHUNK_VIEWDIST)/2)) * CHUNK_WIDTH;
+			z = chunk_man->old_z + ((i/(CHUNK_VIEWDIST)) - ((CHUNK_VIEWDIST)/2)) * CHUNK_DEPTH;
+
+			int ccomp_idx = chunk_manager_find_compiled_idx(chunk_man, x, z);
+			if (ccomp_idx != -1)
+				comp_needed[ccomp_idx] = 1;
+		}
+	}
+
+	u16 cmp_idx = 0;
+	u16 data_idx = 0;
+
+	for (int i=0;i<CHUNK_DATA_COUNT;i++) {
+		x = chunk_man->old_x + ((i%(CHUNK_VIEWDIST+2)) - ((CHUNK_VIEWDIST+2)/2)) * CHUNK_WIDTH;
+		z = chunk_man->old_z + ((i/(CHUNK_VIEWDIST+2)) - ((CHUNK_VIEWDIST+2)/2)) * CHUNK_DEPTH;
+
+		int cdat_idx = chunk_manager_find_data_idx(chunk_man, x, z);
+		if (cdat_idx == -1) {
+			for (;data_idx<CHUNK_DATA_COUNT;data_idx++) {
+				if (!data_needed[data_idx])
+					break;
+			}
+
+			//printf("D%d (%lld,%lld) %d\n", i, x, z, data_idx);
+			chunkdata_init(&chunk_man->chunks[data_idx], x, z);
+			data_idx++;
+		}
+
+		if (i < CHUNK_COMPILED_COUNT_PLANE) {
+			x = chunk_man->old_x + ((i%(CHUNK_VIEWDIST)) - ((CHUNK_VIEWDIST)/2)) * CHUNK_WIDTH;
+			z = chunk_man->old_z + ((i/(CHUNK_VIEWDIST)) - ((CHUNK_VIEWDIST)/2)) * CHUNK_DEPTH;
+
+			int ccomp_idx = chunk_manager_find_compiled_idx(chunk_man, x, z);
+			if (ccomp_idx == -1) {
+				for (;cmp_idx<CHUNK_DATA_COUNT;cmp_idx++) {
+					if (!comp_needed[cmp_idx])
+						break;
+				}
+
+				//printf("C%d (%lld,%lld) %d\n", i, x, z, cmp_idx);
+				chunk_man->compiled_pos[cmp_idx].x = x;
+				chunk_man->compiled_pos[cmp_idx].z = z;
+				for (int j=0;j<CHUNK_COMPILED_YCOUNT;j++) {
+					int cidx = (cmp_idx*CHUNK_COMPILED_YCOUNT)+j;
+					chunk_man->compiled_chunks[cidx].size = 0;
+					chunk_man->compiled_chunks[cidx].progress = 0;
+					mesh_update(&chunk_man->meshes[cidx], 0, NULL);
+				}
+				cmp_idx++;
+			}
+		}
+	}
 }

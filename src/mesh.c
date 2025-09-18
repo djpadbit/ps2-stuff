@@ -81,6 +81,10 @@ void mesh_set_quad_prim(mesh_t *mesh, texbuffer_t *tbuff) {
 	mesh->vu1_extra_data_size = 4;
 	// we need to send quad by quad
 	mesh->vu1_min_vert_send = 4;
+
+	// Set color
+	for (int i=0;i<4;i++)
+		mesh->color.vals[i] = 128;
 }
 
 void mesh_draw(mesh_t *mesh, renderer_t *rend) {
@@ -118,8 +122,8 @@ void mesh_draw(mesh_t *mesh, renderer_t *rend) {
 
 	packet2_utils_gs_add_texbuff_clut(packet, mesh->texture, &mesh->clut);
 	
-	for (u8 j = 0; j < 4; j++) // RGBA
-		packet2_add_u32(packet, 128);
+	for (u8 j = 0; j < 4; j++)
+		packet2_add_u32(packet, mesh->color.vals[j]);
 	vif_added_qw += packet2_utils_vu_close_unpack(packet);
 
 	u32 vert_multiple = mesh->vu1_min_vert_send < 1 ? 1 : mesh->vu1_min_vert_send;

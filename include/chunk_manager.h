@@ -7,9 +7,9 @@
 #include <chunk_data.h>
 #include <qdisp.h>
 
-#define CHUNK_VIEWDIST 4
+#define CHUNK_VIEWDIST 8
 
-#define CHUNK_COMPILED_MAX_VERTS 2048
+#define CHUNK_COMPILED_MAX_VERTS (4096*1)
 
 #define CHUNK_DATA_COUNT ((CHUNK_VIEWDIST+2)*(CHUNK_VIEWDIST+2))
 #define CHUNK_COMPILED_YCOUNT (WORLD_HEIGHT/CHUNK_HEIGHT)
@@ -32,6 +32,9 @@ typedef struct {
 	} compiled_pos[CHUNK_COMPILED_COUNT_PLANE];
 
 	mesh_t meshes[CHUNK_COMPILED_COUNT];
+
+	s64 old_x;
+	s64 old_z;
 } chunk_manager_t;
 
 u8 chunk_manager_chunk_ready(chunk_manager_t *chunk_man, u16 compiled_idx);

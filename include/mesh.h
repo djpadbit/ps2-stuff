@@ -21,6 +21,14 @@ typedef struct {
 	lod_t lod;
 	texbuffer_t *texture;
 
+	union {
+		u8 vals[4];
+		struct {
+			u8 r,g,b,a;
+		};
+		u32 val;
+	} color;
+
 	VECTOR *vu1_extra_data;
 	u16 vu1_extra_data_size; // qw
 	u16 vu1_min_vert_send;
