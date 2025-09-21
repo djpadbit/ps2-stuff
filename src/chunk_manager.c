@@ -83,59 +83,6 @@ static inline u8 chunk_manager_get_texid(u8 idx, u8 other_idx, enum facing face)
 	return 14;
 }
 
-static u16 chunk_manager_traversed[CHUNK_WIDTH*CHUNK_DEPTH*CHUNK_HEIGHT];
-#define CHUNK_TRAVERSED(x,y,z) (((chunk_manager_traversed[x*CHUNK_DEPTH + z] >> y)&1))
-#define CHUNK_TRAVERSE(x,y,z) (chunk_manager_traversed[x*CHUNK_DEPTH + z] |= 1 << y)
-
-static const u16 chunk_manager_vis_mask[36] = {0, 0x1, 0x2, 0x4, 0x8, 0x10, 0x1, 0, 0x20, 0x40, 0x80, 0x100, 0x2, 0x20, 0, 0x200, 0x400, 0x800, 0x4, 0x40, 0x200, 0, 0x1000, 0x2000, 0x8, 0x80, 0x400, 0x1000, 0, 0x4000, 0x10, 0x100, 0x800, 0x2000, 0x4000, 0};
-
-static inline u16 chunk_manager_get_vis(enum facing from, enum facing to) {
-	if (from == to)
-		return 0;
-	return chunk_manager_vis_mask[from*6 + to];
-}
-
-u8 chunk_manager_check_vis(u16 vis, enum facing from, enum facing to) {
-	return (vis & chunk_manager_get_vis(from, to)) > 0 ? 1 : 0;
-}
-
-u8 chunk_manager_chunk_visible_passing(chunk_manager_t *chunk_man, u16 compiled_idx, enum facing from, enum facing to) {
-	if (!chunk_man)
-		return 0;
-	return chunk_manager_check_vis(chunk_man->compiled_chunks[compiled_idx].chunk_vis, from, to);
-}
-
-static inline u8 chunk_manager_floodfill(chunkdata_t *cdat, u8 yoff, s8 x, s8 y, s8 z, u16 depth) {
-	if (x < 0)
-		return 1<<FC_LEFT;
-	if (x >= CHUNK_WIDTH)
-		return 1<<FC_RIGHT;
-	if (y < 0)
-		return 1<<FC_DOWN;
-	if (y >= CHUNK_HEIGHT)
-		return 1<<FC_UP;
-	if (z < 0)
-		return 1<<FC_BACK;
-	if (z >= CHUNK_DEPTH)
-		return 1<<FC_FRONT;
-
-	if (CHUNK_TRAVERSED(x, y, z) || !chunk_manager_is_transparent(cdat->data[x][z][yoff+y]))
-		return 0;
-
-	CHUNK_TRAVERSE(x, y, z);
-
-	//printf("%d - (%d,%d,%d) %d\n", depth,x,y,z, chunk_manager_traversed[x*CHUNK_DEPTH + z]);
-
-	u8 ret = 0;
-	ret |= chunk_manager_floodfill(cdat, yoff, x-1, y, z, depth+1);
-	ret |= chunk_manager_floodfill(cdat, yoff, x+1, y, z, depth+1);
-	ret |= chunk_manager_floodfill(cdat, yoff, x, y-1, z, depth+1);
-	ret |= chunk_manager_floodfill(cdat, yoff, x, y+1, z, depth+1);
-	ret |= chunk_manager_floodfill(cdat, yoff, x, y, z-1, depth+1);
-	ret |= chunk_manager_floodfill(cdat, yoff, x, y, z+1, depth+1);
-	return ret;
-}
-
 static int chunk_manager_compile(chunk_manager_t *chunk_man, int chunk_comp_idx, int budget) {
 	if (!chunk_man)
 		return budget;
@@ -217,34 +164,6 @@ static int chunk_manager_compile(chunk_manager_t *chunk_man, int chunk_comp_idx,
 	chunk_man->compiled_chunks[chunk_comp_idx].progress = progress;
 
 	if (chunk_manager_chunk_ready_inner(chunk_man, chunk_comp_idx)) {
-		memset(chunk_manager_traversed, 0, sizeof(chunk_manager_traversed));
-
-		u8 touched = 0;
-
-		for (u8 x=0;x<CHUNK_WIDTH;x++) {
-			for (u8 z=0;z<CHUNK_DEPTH;z++) {
-				for (u8 y=0;y<CHUNK_HEIGHT;y++) {
-					if (CHUNK_TRAVERSED(x, y, z) || !chunk_manager_is_transparent(cdat->data[x][z][yoff+y]))
-						continue;
-					touched |= chunk_manager_floodfill(cdat, yoff, x, y, z, 0);
-				}
-			}
-		}
-
-		chunk_man->compiled_chunks[chunk_comp_idx].chunk_vis = 0;
-
-		for (enum facing from=0;from<FC_END;from++) {
-			if ((touched >> from)&1) {
-				for (enum facing to=0;to<FC_END;to++) {
-					if (from == to)
-						continue;
-					if ((touched >> to)&1) {
-						chunk_man->compiled_chunks[chunk_comp_idx].chunk_vis |= chunk_manager_get_vis(from, to);
-					}
-				}
-			}
-		}
-
 		mesh_update(&chunk_man->meshes[chunk_comp_idx], chunk_man->compiled_chunks[chunk_comp_idx].size, (qvert_t*)&chunk_man->compiled_chunks[chunk_comp_idx]);
 		chunk_man->meshes[chunk_comp_idx].pos[0] = cx;
 		chunk_man->meshes[chunk_comp_idx].pos[1] = yoff;

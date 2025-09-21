@@ -16,25 +16,5 @@ enum facing : u8 {
 
 const extern VECTOR facing_dir[FC_END];
 const extern enum facing facing_opposite[FC_END];
-/*
-static inline enum facing facing_opposite(enum facing face) {
-	switch (face) {
-		case FC_RIGHT:
-			return FC_LEFT;
-		case FC_LEFT:
-			return FC_RIGHT;
-		case FC_UP:
-			return FC_DOWN;
-		case FC_DOWN:
-			return FC_UP;
-		case FC_FRONT:
-			return FC_BACK;
-		case FC_BACK:
-			return FC_FRONT;
-		default:
-			break;
-	}
-	return FC_END;
-}*/
 
 #endif

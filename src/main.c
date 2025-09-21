@@ -83,80 +83,8 @@ static inline float remap_stick(u8 input) {
 
 static const VECTOR chunk_extends = {CHUNK_WIDTH, CHUNK_DEPTH, CHUNK_HEIGHT, 0.0f};
 
-#define CHUNK_QUEUE_SIZE (CHUNK_COMPILED_COUNT_PLANE * (CHUNK_COMPILED_YCOUNT+2) + 1)
-
-struct chunkinfo {
-	s64 x, z;
-	u16 idx;
-	s16 y;
-	enum facing from;
-	u8 faces_seen;
-};
-
-#define FACE_SEEN(faces, face) (((faces) >> (face))&1)
-#define FACE_SEE(faces, face) (faces | (1 << (face)))
-
-static struct chunkinfo __attribute__((aligned(128))) chunk_queue[CHUNK_QUEUE_SIZE];
-static u16 __attribute__((aligned(128))) chunk_visited[CHUNK_COMPILED_COUNT_PLANE];
-
-#define CHUNK_TRAVERSED(x,y,z) (((chunk_visited[CHUNK_POS(x) * CHUNK_VIEWDIST + CHUNK_POS(z)] >> (y+1))&1))
-#define CHUNK_TRAVERSE(x,y,z) (chunk_visited[CHUNK_POS(x) * CHUNK_VIEWDIST + CHUNK_POS(z)] |= 1 << (y+1))
-
-static u16 queue_widx;
-static u16 queue_ridx;
-
-void add_chunk(s64 x, s16 y, s64 z, u16 idx, enum facing from, u8 faces_seen) {
-	u16 new_idx = ((queue_widx+1)%CHUNK_QUEUE_SIZE);
-	assert(new_idx != queue_ridx);
-	chunk_queue[queue_widx].x = x;
-	chunk_queue[queue_widx].z = z;
-	chunk_queue[queue_widx].idx = idx;
-	chunk_queue[queue_widx].y = y;
-	chunk_queue[queue_widx].from = from;
-	chunk_queue[queue_widx].faces_seen = faces_seen;
-	queue_widx = new_idx;
-}
-
-int pop_chunk(struct chunkinfo* info) {
-	if (queue_ridx == queue_widx)
-		return -1;
-	//memccpy(info, &chunk_queue[queue_ridx++], sizeof(struct chunkinfo), 1);
-	info->x = chunk_queue[queue_ridx].x;
-	info->z = chunk_queue[queue_ridx].z;
-	info->idx = chunk_queue[queue_ridx].idx;
-	info->y = chunk_queue[queue_ridx].y;
-	info->from = chunk_queue[queue_ridx].from;
-	info->faces_seen = chunk_queue[queue_ridx].faces_seen;
-	queue_ridx++;
-	return 0;
-}
-
-u16 queue_size() {
-	if (queue_ridx == queue_widx)
-		return 0;
-	if (queue_ridx < queue_widx)
-		return queue_widx - queue_ridx;
-	return queue_widx + CHUNK_QUEUE_SIZE - queue_ridx;
-}
-
 void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_manager_t *chunks)
 {
-	/*int cube_cnt = 1000;
-	mesh_create(&cube_mesh, 4*6*cube_cnt);
-
-	mesh_set_quad_prim(&cube_mesh, texbuff);
-
-	u32 vert_idx = 0;
-	qvert_t pos = {{0,0,0,0}};
-	for (int i = 0; i < cube_cnt; i++) {
-		pos.x = (i % 32)*20;
-		pos.y = (i / 32)*20;
-		for (enum facing face = 0; face < FC_END; face++)
-			vert_idx += qdisp_put_dir(cube_mesh.vertices + vert_idx, pos, face, face == FC_UP ? 0 : face == FC_DOWN ? 2 : 3);
-	}
-	printf("Final vert count: %d\n", vert_idx);
-	printf("memory size: %d\n", cube_cnt*4*6*sizeof(qvert_t));*/
-
 	// Camera look angles
 	float verticalAngle = 0.0f;
 	float horizontalAngle = M_PIf;
@@ -171,22 +99,6 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 	// The main loop...
 	for (;;) {
 		clock_t start_time = clock();
-		// Spin the cube a bit.
-		/*cube_mesh.rot[0] += 0.008f;
-		while (cube_mesh.rot[0] > 3.14f)
-			cube_mesh.rot[0] -= 6.28f;
-
-		cube_mesh.rot[1] += 0.012f;
-		while (cube_mesh.rot[1] > 3.14f)
-			cube_mesh.rot[1] -= 6.28f;
-
-		rend->camera_pos[2] += .5F;
-		rend->camera_rot[2] += 0.002f;
-
-		if (rend->camera_pos[2] >= 400.0F) {
-			rend->camera_pos[2] = 40.0F;
-			rend->camera_rot[2] = 0.00f;
-		}*/
 
 		// Only apply inputs if we managed to read the info
 		if (inputman_read(inp) != -1) {
@@ -240,13 +152,13 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 		renderer_clear(rend);
 
 		// Update position for the chunk mananger
-		u16 base_compidx = chunk_manager_update_pos(chunks, rend->camera_pos[0], rend->camera_pos[2]);
+		chunk_manager_update_pos(chunks, rend->camera_pos[0], rend->camera_pos[2]);
 		clock_t start_render = clock();
 
 		int cntFrust = 0;
 		int cntnFrsut = 0;
 		// Draw all the visible chunks
-		/*for (int i=0;i<CHUNK_COMPILED_COUNT;i++) {
+		for (int i=0;i<CHUNK_COMPILED_COUNT;i++) {
 			// Not compiled or empty
 			if (chunk_manager_chunk_empty(&chunk_man, i))
 				continue;
@@ -261,82 +173,6 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 			}
 
 			mesh_draw(&chunks->meshes[i], rend);
-		}*/
-
-		queue_widx = 0;
-		queue_ridx = 0;
-		memset(chunk_visited, 0, sizeof(chunk_visited));
-
-		s64 chunkx = CHUNK_CLIP_POS((s64)rend->camera_pos[0]);
-		s16 chunkyoff = CHUNK_POS((s64)rend->camera_pos[1]);
-		if (chunkyoff > CHUNK_COMPILED_YCOUNT)
-			chunkyoff = CHUNK_COMPILED_YCOUNT;
-		if (chunkyoff < -1)
-			chunkyoff = -1;
-		s16 chunky = chunkyoff * CHUNK_HEIGHT;
-		s64 chunkz = CHUNK_CLIP_POS((s64)rend->camera_pos[2]);
-
-
-		add_chunk(chunkx, chunkyoff, chunkz, base_compidx, FC_END, 0);
-
-		struct chunkinfo info;
-		VECTOR chunk_pos;
-		chunk_pos[3] = 0.0f;
-
-		while (pop_chunk(&info) != -1) {
-
-			u16 comp_idx = (info.idx*CHUNK_COMPILED_YCOUNT) + info.y;
-			u16 vis = 0xFFFF;
-
-			// Draw if we can & get visibility info
-			if (info.y >= 0 && info.y < CHUNK_COMPILED_YCOUNT && !chunk_manager_chunk_empty(&chunk_man, comp_idx)) {
-				vis = chunks->compiled_chunks[comp_idx].chunk_vis;
-				mesh_draw(&chunks->meshes[comp_idx], rend);
-				cntFrust++;
-			} else {
-				cntnFrsut++;
-			}
-
-			//printf("(%lld,%d,%lld) - %d,%d,%d,%d | %d|%d %d\n", info.x, info.y, info.z, info.idx, info.from, info.faces_seen, vis, queue_ridx, queue_widx, queue_size());
-
-			for (enum facing to = 0;to<FC_END;to++) {
-				if (to == info.from)
-					continue;
-				s64 newx = info.x + (((s64)facing_dir[to][0]) * CHUNK_WIDTH);
-				s64 newz = info.z + (((s64)facing_dir[to][2]) * CHUNK_DEPTH);
-				s16 newy = info.y + ((s64)facing_dir[to][1]);
-
-				chunk_pos[0] = newx;
-				chunk_pos[1] = newy * CHUNK_HEIGHT;
-				chunk_pos[2] = newz;
-
-				// Check if we're going backwards
-				if (FACE_SEEN(info.faces_seen, facing_opposite[to]))
-					continue;
-
-				// We've already seen this one
-				if (CHUNK_TRAVERSED(newx-chunkx + ((CHUNK_VIEWDIST/2)*CHUNK_WIDTH), newy, newz-chunkz + ((CHUNK_VIEWDIST/2)*CHUNK_DEPTH)))
-					continue;
-
-				int cidx = chunk_manager_find_compiled_idx(&chunk_man, newx, newz);
-
-				// Outside of the chunks we have
-				if (newy < -1 || newy > CHUNK_COMPILED_YCOUNT || cidx == -1)
-					continue;
-
-				if (info.from != FC_END && !chunk_manager_check_vis(vis, info.from, to))
-					continue;
-
-				u8 in_frust = renderer_check_box_frustum(rend, chunk_pos, (float*)chunk_extends);
-				//chunks->meshes[i].color.val = in_frust ? 0x80008000 : 0x80000080;
-				if (!in_frust)
-					continue;
-
-				CHUNK_TRAVERSE(newx-chunkx + ((CHUNK_VIEWDIST/2)*CHUNK_WIDTH), newy, newz-chunkz + ((CHUNK_VIEWDIST/2)*CHUNK_DEPTH));
-
-				//printf("P(%lld,%d,%lld) - %d,%d,%d\n", newx, newy, newz, cidx, facing_opposite[to], FACE_SEE(info.faces_seen, to));
-				add_chunk(newx, newy, newz, cidx, facing_opposite[to], FACE_SEE(info.faces_seen, to));
-			}
 		}
 
 		clock_t render_end = clock();
@@ -348,7 +184,7 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 			budget = 0;
 
 		// Work a little bit on the chunks and stuff
-		int start_budget = 1024;//budget/100;
+		int start_budget = budget/100;
 		budget = chunk_manager_work(chunks, start_budget);
 
 		clock_t end_time = clock();

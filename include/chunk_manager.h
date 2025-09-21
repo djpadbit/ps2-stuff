@@ -23,7 +23,6 @@ typedef struct {
 		qvert_t __attribute__((aligned(128))) verts[CHUNK_COMPILED_MAX_VERTS];
 		u32 size;
 		u16 progress;
-		u16 chunk_vis;
 	} compiled_chunks[CHUNK_COMPILED_COUNT];
 
 	// Tight memory layout for faster lookup
@@ -42,8 +41,6 @@ typedef struct {
 int chunk_manager_find_compiled_idx(chunk_manager_t *chunk_man, s64 x, s64 z);
 u8 chunk_manager_chunk_ready(chunk_manager_t *chunk_man, u16 compiled_idx);
 u8 chunk_manager_chunk_empty(chunk_manager_t *chunk_man, u16 compiled_idx);
-u8 chunk_manager_check_vis(u16 vis, enum facing from, enum facing to);
-u8 chunk_manager_chunk_visible_passing(chunk_manager_t *chunk_man, u16 compiled_idx, enum facing from, enum facing to);
 void chunk_manager_init(chunk_manager_t *chunk_man, texbuffer_t *texture);
 int chunk_manager_work(chunk_manager_t *chunk_man, int budget);
 // Returns the current complied chunk idx player pos
