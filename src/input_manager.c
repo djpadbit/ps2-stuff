@@ -31,11 +31,16 @@ int inputman_load_iop() {
 	return 0;
 }
 
-static int inputman_wait_padrdy(int port, int slot) {
+static int inputman_wait_padrdy(int port, int slot, int no_wait) {
 	char stateString[16];
 	int state = padGetState(port, slot);
 	if (state == PAD_STATE_DISCONN)
 		return -1;
+
+	if (no_wait) {
+		if ((state != PAD_STATE_STABLE) && (state != PAD_STATE_FINDCTP1))
+			return -1;
+	}
 
 	int lastState = -1;
 	while ((state != PAD_STATE_STABLE) && (state != PAD_STATE_FINDCTP1)) {
@@ -74,7 +79,7 @@ int inputman_init(input_manager_t *man, int port, int slot) {
 		return -1;
 	}
 
-	if (inputman_wait_padrdy(port, slot) < 0) {
+	if (inputman_wait_padrdy(port, slot, 0) < 0) {
 		free(man->pad_data);
 		return -1;
 	}
@@ -125,7 +130,7 @@ int inputman_read(input_manager_t *man) {
 	if (!man)
 		return -1;
 
-	if (inputman_wait_padrdy(man->port, man->slot) < 0)
+	if (inputman_wait_padrdy(man->port, man->slot, 1) < 0)
 		return -1;
 	if (padRead(man->port, man->slot, &man->buttons) == 0)
 		return -1;

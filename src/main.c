@@ -9,6 +9,7 @@
 # VU1 and libpacket2 showcase.
 */
 
+#include <assert.h>
 #include <math3d.h>
 #include <math.h>
 #include <stdio.h>
@@ -27,6 +28,7 @@
 #include <sifrpc.h>
 #include <time.h>
 
+#include <facing.h>
 #include <chunk_data.h>
 #include <chunk_manager.h>
 #include <input_manager.h>
@@ -78,7 +80,63 @@ static inline float remap_stick(u8 input) {
 #define DEGS(val) ((val)*(180.0f/3.14f))
 #define M_PIf		3.14159265358979323846f
 
-const VECTOR chunk_extends = {CHUNK_WIDTH, CHUNK_DEPTH, CHUNK_HEIGHT, 0.0f};
+static const VECTOR chunk_extends = {CHUNK_WIDTH, CHUNK_DEPTH, CHUNK_HEIGHT, 0.0f};
+
+#define CHUNK_QUEUE_SIZE (CHUNK_COMPILED_COUNT_PLANE * (CHUNK_COMPILED_YCOUNT+2) + 1)
+
+struct chunkinfo {
+	s64 x, z;
+	u16 idx;
+	s16 y;
+	enum facing from;
+	u8 faces_seen;
+};
+
+#define FACE_SEEN(faces, face) (((faces) >> (face))&1)
+#define FACE_SEE(face) (1 << (face))
+
+static struct chunkinfo __attribute__((aligned(128))) chunk_queue[CHUNK_QUEUE_SIZE];
+static u8 __attribute__((aligned(128))) chunk_visited[CHUNK_COMPILED_COUNT_PLANE];
+
+#define CHUNK_TRAVERSED(x,y,z) (((chunk_visited[x/CHUNK_WIDTH + z/CHUNK_DEPTH] >> y)&1))
+#define CHUNK_TRAVERSE(x,y,z) (chunk_visited[x/CHUNK_WIDTH + z/CHUNK_DEPTH] |= 1 << y)
+
+static u16 queue_widx;
+static u16 queue_ridx;
+
+void add_chunk(s64 x, s16 y, s64 z, u16 idx, enum facing from, u8 faces_seen) {
+	u16 new_idx = ((queue_widx+1)%CHUNK_QUEUE_SIZE);
+	assert(new_idx != queue_ridx);
+	chunk_queue[queue_widx].x = x;
+	chunk_queue[queue_widx].z = z;
+	chunk_queue[queue_widx].idx = idx;
+	chunk_queue[queue_widx].y = y;
+	chunk_queue[queue_widx].from = from;
+	chunk_queue[queue_widx].faces_seen = faces_seen;
+	queue_widx = new_idx;
+}
+
+int pop_chunk(struct chunkinfo* info) {
+	if (queue_ridx == queue_widx)
+		return -1;
+	//memccpy(info, &chunk_queue[queue_ridx++], sizeof(struct chunkinfo), 1);
+	info->x = chunk_queue[queue_ridx].x;
+	info->z = chunk_queue[queue_ridx].z;
+	info->idx = chunk_queue[queue_ridx].idx;
+	info->y = chunk_queue[queue_ridx].y;
+	info->from = chunk_queue[queue_ridx].from;
+	info->faces_seen = chunk_queue[queue_ridx].faces_seen;
+	queue_ridx++;
+	return 0;
+}
+
+u16 queue_size() {
+	if (queue_ridx == queue_widx)
+		return 0;
+	if (queue_ridx < queue_widx)
+		return queue_widx - queue_ridx;
+	return queue_widx + CHUNK_QUEUE_SIZE - queue_ridx;
+}
 
 void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_manager_t *chunks)
 {
@@ -129,68 +187,65 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 			rend->camera_rot[2] = 0.00f;
 		}*/
 
-		inputman_read(inp);
+		// Only apply inputs if we managed to read the info
+		if (inputman_read(inp) != -1) {
+			float rjoyv = remap_stick(inp->buttons.rjoy_v);
+			float rjoyh = remap_stick(inp->buttons.rjoy_h);
 
-		float rjoyv = remap_stick(inp->buttons.rjoy_v);
-		float rjoyh = remap_stick(inp->buttons.rjoy_h);
+			float ljoyv = remap_stick(inp->buttons.ljoy_v);
+			float ljoyh = remap_stick(inp->buttons.ljoy_h);
 
-		float ljoyv = remap_stick(inp->buttons.ljoy_v);
-		float ljoyh = remap_stick(inp->buttons.ljoy_h);
+			float speed = 1.0f;
+			if (!(inp->buttons.btns & PAD_R2))
+				speed += 2.0f;
+			if (!(inp->buttons.btns & PAD_L2))
+				speed -= 0.5f;
 
-		float speed = 1.0f;
-		if (!(inp->buttons.btns & PAD_R2))
-			speed += 2.0f;
-		if (!(inp->buttons.btns & PAD_L2))
-			speed -= 0.5f;
+			horizontalAngle -= (1.0f/60.0f) * speed * rjoyh;
+			verticalAngle   += (1.0f/60.0f) * speed * rjoyv;
 
-		horizontalAngle -= (1.0f/60.0f) * speed * rjoyh;
-		verticalAngle   += (1.0f/60.0f) * speed * rjoyv;
+			while (horizontalAngle > M_PIf)
+				horizontalAngle -= 2.0f*M_PIf;
+			while (horizontalAngle < -M_PIf)
+				horizontalAngle += 2.0f*M_PIf;
 
-		while (horizontalAngle > M_PIf)
-			horizontalAngle -= 2.0f*M_PIf;
-		while (horizontalAngle < -M_PIf)
-			horizontalAngle += 2.0f*M_PIf;
+			while (verticalAngle > M_PIf)
+				verticalAngle -= 2.0f*M_PIf;
+			while (verticalAngle < -M_PIf)
+				verticalAngle += 2.0f*M_PIf;
 
-		while (verticalAngle > M_PIf)
-			verticalAngle -= 2.0f*M_PIf;
-		while (verticalAngle < -M_PIf)
-			verticalAngle += 2.0f*M_PIf;
+			direction[0] = cosf(verticalAngle) * sinf(-horizontalAngle);
+			direction[1] = sinf(verticalAngle);
+			direction[2] = cosf(verticalAngle) * cosf(-horizontalAngle);
 
-		direction[0] = cosf(verticalAngle) * sinf(-horizontalAngle);
-		direction[1] = sinf(verticalAngle);
-		direction[2] = cosf(verticalAngle) * cosf(-horizontalAngle);
+			right[0] = sin(-horizontalAngle - (M_PIf/2.0f));
+			right[2] = cos(-horizontalAngle - (M_PIf/2.0f));
 
-		right[0] = sin(-horizontalAngle - (M_PIf/2.0f));
-		right[2] = cos(-horizontalAngle - (M_PIf/2.0f));
+			vector_cross_product(up, right, direction);
 
-		vector_cross_product(up, right, direction);
+			rend->camera_rot[0] = verticalAngle;
+			rend->camera_rot[1] = horizontalAngle;
 
-		rend->camera_rot[0] = verticalAngle;
-		rend->camera_rot[1] = horizontalAngle;
+			rend->camera_pos[0] += direction[0] * (ljoyv * speed) + right[0] * (ljoyh * speed);
+			rend->camera_pos[1] += direction[1] * (ljoyv * speed) + right[1] * (ljoyh * speed);
+			rend->camera_pos[2] += direction[2] * (ljoyv * speed) + right[2] * (ljoyh * speed);
 
-		rend->camera_pos[0] += direction[0] * (ljoyv * speed) + right[0] * (ljoyh * speed);
-		rend->camera_pos[1] += direction[1] * (ljoyv * speed) + right[1] * (ljoyh * speed);
-		rend->camera_pos[2] += direction[2] * (ljoyv * speed) + right[2] * (ljoyh * speed);
-
-		/*printf("(%.2f,%.2f,%.2f) (%.2f,%.2f,%.2f)\n", rend->camera_pos[0], rend->camera_pos[1], rend->camera_pos[2],
-											DEGS(rend->camera_rot[0]), DEGS(rend->camera_rot[1]), DEGS(rend->camera_rot[2]));
-		*/
-
-		//printf("(%.2f,%.2f) (%.2f,%.2f)\n", ljoyh, ljoyv, rjoyh, rjoyv);
-		//printf("btn: %x, ljoy: (%x,%x), rjoy: (%x,%x)\n", inp->buttons.btns, inp->buttons.ljoy_h,inp->buttons.ljoy_v, inp->buttons.rjoy_h,inp->buttons.rjoy_v);
+			//printf("(%.2f,%.2f) (%.2f,%.2f)\n", ljoyh, ljoyv, rjoyh, rjoyv);
+			//printf("btn: %x, ljoy: (%x,%x), rjoy: (%x,%x)\n", inp->buttons.btns, inp->buttons.ljoy_h,inp->buttons.ljoy_v, inp->buttons.rjoy_h,inp->buttons.rjoy_v);
+		}
 
 		// Moved the camera, so update the matrix
 		renderer_update_matrices(rend);
 		renderer_clear(rend);
 
 		// Update position for the chunk mananger
-		chunk_manager_update_pos(chunks, rend->camera_pos[0], rend->camera_pos[2]);
+		u16 base_compidx = chunk_manager_update_pos(chunks, rend->camera_pos[0], rend->camera_pos[2]);
 		clock_t start_render = clock();
 
 		int cntFrust = 0;
 		int cntnFrsut = 0;
 		// Draw all the visible chunks
-		for (int i=0;i<CHUNK_COMPILED_COUNT;i++) {
+		/*for (int i=0;i<CHUNK_COMPILED_COUNT;i++) {
 			// Not compiled or empty
 			if (chunk_manager_chunk_empty(&chunk_man, i))
 				continue;
@@ -205,7 +260,80 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 			}
 
 			mesh_draw(&chunks->meshes[i], rend);
-			//cnt++;
+		}*/
+
+		queue_widx = 0;
+		queue_ridx = 0;
+		memset(chunk_visited, 0, sizeof(chunk_visited));
+
+		s64 chunkx = (((s64)rend->camera_pos[0])/CHUNK_WIDTH) * CHUNK_WIDTH;
+		s16 chunkyoff = (((s64)rend->camera_pos[1])/CHUNK_HEIGHT);
+		if (chunkyoff > CHUNK_COMPILED_YCOUNT)
+			chunkyoff = CHUNK_COMPILED_YCOUNT;
+		if (chunkyoff < -1)
+			chunkyoff = -1;
+		s16 chunky = chunkyoff * CHUNK_HEIGHT;
+		s64 chunkz = (((s64)rend->camera_pos[2])/CHUNK_DEPTH) * CHUNK_DEPTH;
+
+
+		add_chunk(chunkx, chunkyoff, chunkz, base_compidx, FC_END, 0);
+
+		struct chunkinfo info;
+		VECTOR chunk_pos;
+		chunk_pos[3] = 0.0f;
+
+		while (queue_size()) {
+			if (pop_chunk(&info) == -1)
+				assert(0);
+
+			chunk_pos[0] = info.x;
+			chunk_pos[1] = info.y * CHUNK_HEIGHT;
+			chunk_pos[2] = info.z;
+
+			u16 comp_idx = info.idx + info.y;
+			u16 vis = 0xFF;
+
+			printf("(%lld,%d,%lld) - %d,%d,%d\n", info.x, info.y, info.z, info.idx, info.from, info.faces_seen);
+
+			// Draw if we can & get visibility info
+			if (info.y >= 0 && info.y < CHUNK_COMPILED_YCOUNT && !chunk_manager_chunk_empty(&chunk_man, comp_idx)) {
+				vis = chunks->compiled_chunks[comp_idx].chunk_vis;
+				mesh_draw(&chunks->meshes[comp_idx], rend);
+			}
+
+			for (enum facing to = 0;to<FC_END;to++) {
+				if (to == info.from)
+					continue;
+				s64 newx = info.x + facing_dir[to][0] * CHUNK_WIDTH;
+				s64 newz = info.z + facing_dir[to][2] * CHUNK_DEPTH;
+				s16 newy = info.y + facing_dir[to][1];
+
+				// Check if we're going backwards
+				if (FACE_SEEN(info.faces_seen, facing_opposite[info.from]))
+					continue;
+
+				// We've already seen this one
+				if (CHUNK_TRAVERSED(newx, newy, newz))
+					continue;
+
+				int cidx = chunk_manager_find_compiled_idx(&chunk_man, newx, newz);
+
+				// Outside of the chunks we have
+				if (newy < -1 || newy > CHUNK_COMPILED_YCOUNT || cidx == -1)
+					continue;
+
+				if (!chunk_manager_check_vis(vis, info.from, to))
+					continue;
+
+				u8 in_frust = renderer_check_box_frustum(rend, chunk_pos, (float*)chunk_extends);
+				//chunks->meshes[i].color.val = in_frust ? 0x80008000 : 0x80000080;
+				if (in_frust)
+					cntFrust++;
+				else {
+					cntnFrsut++;
+					continue;
+				}
+			}
 		}
 
 		clock_t render_end = clock();
