@@ -41,6 +41,6 @@ u8 chunk_manager_chunk_ready(chunk_manager_t *chunk_man, u16 compiled_idx);
 u8 chunk_manager_chunk_empty(chunk_manager_t *chunk_man, u16 compiled_idx);
 void chunk_manager_init(chunk_manager_t *chunk_man, texbuffer_t *texture);
 int chunk_manager_work(chunk_manager_t *chunk_man, int budget);
-void chunk_manager_update_pos(chunk_manager_t *chunk_man, s64 x, s64 z);
+void chunk_manager_update_pos(chunk_manager_t *chunk_man, s64 cx, s64 cz);
 
 #endif

@@ -108,7 +108,6 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 
 	printf("Start of render loop\n");
 
-
 	clock_t last_time = clock();
 	// The main loop...
 	for (;;) {
@@ -186,8 +185,7 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 
 		// Update position for the chunk mananger
 		chunk_manager_update_pos(chunks, rend->camera_pos[0], rend->camera_pos[2]);
-		// Work a little bit on the chunks and stuff
-		int budget = chunk_manager_work(chunks, 1024);
+		clock_t start_render = clock();
 
 		int cntFrust = 0;
 		int cntnFrsut = 0;
@@ -205,26 +203,33 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 				cntnFrsut++;
 				continue;
 			}
-			
-
 
 			mesh_draw(&chunks->meshes[i], rend);
 			//cnt++;
 		}
 
-		//printf("Budget left: %d meshes drawn: %d\n", budget, cnt);
-		/*for (int i = 0; i < 1; i++) {
-			cube_mesh.pos[0] = i * 40.0F;
-			for (int j = 0; j < 5; j++) {
-				cube_mesh.pos[1] = j * 40.0F;
-				mesh_draw(&cube_mesh, rend);
-			}
-		}*/
+		clock_t render_end = clock();
+
+		static const clock_t frametime_target = 16680;
+
+		int budget = frametime_target - (render_end-start_time) - 1000; // Keep 1ms margin
+		if (budget < 0)
+			budget = 0;
+
+		// Work a little bit on the chunks and stuff
+		int start_budget = budget/100;
+		budget = chunk_manager_work(chunks, start_budget);
 
 		clock_t end_time = clock();
 
-		printf("%ldus / %ldus (%.2f,%.2f,%.2f) (%.2f,%.2f,%.2f) %d/%d\n", end_time-start_time, start_time-last_time, rend->camera_pos[0], rend->camera_pos[1], rend->camera_pos[2],
-											DEGS(rend->camera_rot[0]), DEGS(rend->camera_rot[1]), DEGS(rend->camera_rot[2]), cntFrust, cntnFrsut);
+		long usperbudget = start_budget - budget;
+		if (usperbudget != 0)
+			usperbudget = (end_time-render_end) / usperbudget;
+
+		printf("%ldus / %ldus (%ldus/%ldus/%ldus) (%.2f,%.2f,%.2f) (%.2f,%.2f,%.2f) %d/%d (%ldus/budget) %d/%d\n", end_time-start_time, start_time-last_time, start_render-start_time,
+											render_end-start_render, end_time-render_end, rend->camera_pos[0], rend->camera_pos[1], rend->camera_pos[2],
+											DEGS(rend->camera_rot[0]), DEGS(rend->camera_rot[1]), DEGS(rend->camera_rot[2]), budget, start_budget, usperbudget, cntFrust, cntnFrsut);
+
 		last_time = start_time;
 
 		graph_wait_vsync();
@@ -256,10 +261,10 @@ int main(int argc, char *argv[])
 	// Upload VU1 quad code
 	renderer_upload_vu1(&renderer, &VU1Draw3D_CodeStart, &VU1Draw3D_CodeEnd, 8, 496);
 
-	SETVECTOR(renderer.camera_pos, 0.00f, 128.00f, -40.00f, 1.00f);
+	SETVECTOR(renderer.camera_pos, 0.00f, WORLD_HEIGHT, 0.00f, 1.00f);
 	SETVECTOR(renderer.camera_rot, 0.00f, 0.00f, M_PIf, 1.00f); // flip upside down...
 
-	renderer_setup(&renderer, 640, 512);
+	renderer_setup(&renderer, 640, 448);
 
 	// Load the texture into vram.
 	texbuffer_t texture;
