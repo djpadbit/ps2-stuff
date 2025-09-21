@@ -9,6 +9,9 @@
 #define CHUNK_DEPTH 16
 #define CHUNK_HEIGHT 16
 
+#define CHUNK_CLIP_POS(x) (((x)>>4)<<4)
+#define CHUNK_POS(x) ((x)>>4)
+
 typedef struct {
 	u32 data[CHUNK_WIDTH][CHUNK_DEPTH][WORLD_HEIGHT];
 	s64 x,z;

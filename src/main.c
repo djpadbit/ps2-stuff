@@ -1,3 +1,4 @@
+
 /*
 # _____     ___ ____     ___ ____
 #  ____|   |    ____|   |        | |____|
@@ -93,13 +94,13 @@ struct chunkinfo {
 };
 
 #define FACE_SEEN(faces, face) (((faces) >> (face))&1)
-#define FACE_SEE(face) (1 << (face))
+#define FACE_SEE(faces, face) (faces | (1 << (face)))
 
 static struct chunkinfo __attribute__((aligned(128))) chunk_queue[CHUNK_QUEUE_SIZE];
-static u8 __attribute__((aligned(128))) chunk_visited[CHUNK_COMPILED_COUNT_PLANE];
+static u16 __attribute__((aligned(128))) chunk_visited[CHUNK_COMPILED_COUNT_PLANE];
 
-#define CHUNK_TRAVERSED(x,y,z) (((chunk_visited[x/CHUNK_WIDTH + z/CHUNK_DEPTH] >> y)&1))
-#define CHUNK_TRAVERSE(x,y,z) (chunk_visited[x/CHUNK_WIDTH + z/CHUNK_DEPTH] |= 1 << y)
+#define CHUNK_TRAVERSED(x,y,z) (((chunk_visited[CHUNK_POS(x) * CHUNK_VIEWDIST + CHUNK_POS(z)] >> (y+1))&1))
+#define CHUNK_TRAVERSE(x,y,z) (chunk_visited[CHUNK_POS(x) * CHUNK_VIEWDIST + CHUNK_POS(z)] |= 1 << (y+1))
 
 static u16 queue_widx;
 static u16 queue_ridx;
@@ -266,14 +267,14 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 		queue_ridx = 0;
 		memset(chunk_visited, 0, sizeof(chunk_visited));
 
-		s64 chunkx = (((s64)rend->camera_pos[0])/CHUNK_WIDTH) * CHUNK_WIDTH;
-		s16 chunkyoff = (((s64)rend->camera_pos[1])/CHUNK_HEIGHT);
+		s64 chunkx = CHUNK_CLIP_POS((s64)rend->camera_pos[0]);
+		s16 chunkyoff = CHUNK_POS((s64)rend->camera_pos[1]);
 		if (chunkyoff > CHUNK_COMPILED_YCOUNT)
 			chunkyoff = CHUNK_COMPILED_YCOUNT;
 		if (chunkyoff < -1)
 			chunkyoff = -1;
 		s16 chunky = chunkyoff * CHUNK_HEIGHT;
-		s64 chunkz = (((s64)rend->camera_pos[2])/CHUNK_DEPTH) * CHUNK_DEPTH;
+		s64 chunkz = CHUNK_CLIP_POS((s64)rend->camera_pos[2]);
 
 
 		add_chunk(chunkx, chunkyoff, chunkz, base_compidx, FC_END, 0);
@@ -282,38 +283,39 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 		VECTOR chunk_pos;
 		chunk_pos[3] = 0.0f;
 
-		while (queue_size()) {
-			if (pop_chunk(&info) == -1)
-				assert(0);
+		while (pop_chunk(&info) != -1) {
 
-			chunk_pos[0] = info.x;
-			chunk_pos[1] = info.y * CHUNK_HEIGHT;
-			chunk_pos[2] = info.z;
-
-			u16 comp_idx = info.idx + info.y;
-			u16 vis = 0xFF;
-
-			printf("(%lld,%d,%lld) - %d,%d,%d\n", info.x, info.y, info.z, info.idx, info.from, info.faces_seen);
+			u16 comp_idx = (info.idx*CHUNK_COMPILED_YCOUNT) + info.y;
+			u16 vis = 0xFFFF;
 
 			// Draw if we can & get visibility info
 			if (info.y >= 0 && info.y < CHUNK_COMPILED_YCOUNT && !chunk_manager_chunk_empty(&chunk_man, comp_idx)) {
 				vis = chunks->compiled_chunks[comp_idx].chunk_vis;
 				mesh_draw(&chunks->meshes[comp_idx], rend);
+				cntFrust++;
+			} else {
+				cntnFrsut++;
 			}
+
+			//printf("(%lld,%d,%lld) - %d,%d,%d,%d | %d|%d %d\n", info.x, info.y, info.z, info.idx, info.from, info.faces_seen, vis, queue_ridx, queue_widx, queue_size());
 
 			for (enum facing to = 0;to<FC_END;to++) {
 				if (to == info.from)
 					continue;
-				s64 newx = info.x + facing_dir[to][0] * CHUNK_WIDTH;
-				s64 newz = info.z + facing_dir[to][2] * CHUNK_DEPTH;
-				s16 newy = info.y + facing_dir[to][1];
+				s64 newx = info.x + (((s64)facing_dir[to][0]) * CHUNK_WIDTH);
+				s64 newz = info.z + (((s64)facing_dir[to][2]) * CHUNK_DEPTH);
+				s16 newy = info.y + ((s64)facing_dir[to][1]);
+
+				chunk_pos[0] = newx;
+				chunk_pos[1] = newy * CHUNK_HEIGHT;
+				chunk_pos[2] = newz;
 
 				// Check if we're going backwards
-				if (FACE_SEEN(info.faces_seen, facing_opposite[info.from]))
+				if (FACE_SEEN(info.faces_seen, facing_opposite[to]))
 					continue;
 
 				// We've already seen this one
-				if (CHUNK_TRAVERSED(newx, newy, newz))
+				if (CHUNK_TRAVERSED(newx-chunkx + ((CHUNK_VIEWDIST/2)*CHUNK_WIDTH), newy, newz-chunkz + ((CHUNK_VIEWDIST/2)*CHUNK_DEPTH)))
 					continue;
 
 				int cidx = chunk_manager_find_compiled_idx(&chunk_man, newx, newz);
@@ -322,17 +324,18 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 				if (newy < -1 || newy > CHUNK_COMPILED_YCOUNT || cidx == -1)
 					continue;
 
-				if (!chunk_manager_check_vis(vis, info.from, to))
+				if (info.from != FC_END && !chunk_manager_check_vis(vis, info.from, to))
 					continue;
 
 				u8 in_frust = renderer_check_box_frustum(rend, chunk_pos, (float*)chunk_extends);
 				//chunks->meshes[i].color.val = in_frust ? 0x80008000 : 0x80000080;
-				if (in_frust)
-					cntFrust++;
-				else {
-					cntnFrsut++;
+				if (!in_frust)
 					continue;
-				}
+
+				CHUNK_TRAVERSE(newx-chunkx + ((CHUNK_VIEWDIST/2)*CHUNK_WIDTH), newy, newz-chunkz + ((CHUNK_VIEWDIST/2)*CHUNK_DEPTH));
+
+				//printf("P(%lld,%d,%lld) - %d,%d,%d\n", newx, newy, newz, cidx, facing_opposite[to], FACE_SEE(info.faces_seen, to));
+				add_chunk(newx, newy, newz, cidx, facing_opposite[to], FACE_SEE(info.faces_seen, to));
 			}
 		}
 
@@ -345,7 +348,7 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 			budget = 0;
 
 		// Work a little bit on the chunks and stuff
-		int start_budget = budget/100;
+		int start_budget = 1024;//budget/100;
 		budget = chunk_manager_work(chunks, start_budget);
 
 		clock_t end_time = clock();

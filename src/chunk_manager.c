@@ -316,8 +316,8 @@ u16 chunk_manager_update_pos(chunk_manager_t *chunk_man, s64 cx, s64 cz) {
 	if (!chunk_man)
 		return 0;
 
-	cx = (cx/CHUNK_WIDTH)*CHUNK_WIDTH;
-	cz = (cz/CHUNK_DEPTH)*CHUNK_DEPTH;
+	cx = CHUNK_CLIP_POS(cx);
+	cz = CHUNK_CLIP_POS(cz);
 
 	if (cx == chunk_man->old_x && cz == chunk_man->old_z)
 		return chunk_man->player_idx;
