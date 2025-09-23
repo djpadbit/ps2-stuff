@@ -56,7 +56,7 @@ EE_VU_VSM_FILES := $(patsubst %.vcl,%.vsm,$(EE_VU_SRC_FILES))
 # https://github.com/microsoft/wsl/issues/2468#issuecomment-374904520
 %.vsm: %.vcl Makefile
 	$(DIR_GUARD)
-	$(EE_VCL) $< > $@
+	$(EE_VCL) -t10 $< > $@
 
 ifeq ($(KEEP_VSM), true)
 .PRECIOUS: $(EE_VU_VSM_FILES)
@@ -70,9 +70,12 @@ $(EE_SRC_DIR)/$(RESOURCE_DIR)/%.c: $(RESOURCE_DIR)/%.raw
 	$(DIR_GUARD)
 	bin2c $< $@ $(notdir $*)
 
-.PHONY: clean
+.PHONY: clean cleanc
 clean:
 	rm -rf $(OBJ_DIR) $(EE_BIN) $(RES_CONV) $(EE_VU_VSM_FILES)
+
+cleanc:
+	rm -rf $(OBJ_DIR) $(EE_BIN) $(RES_CONV)
 
 run: $(EE_BIN)
 	ps2client execee host:$(EE_BIN)

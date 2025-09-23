@@ -228,7 +228,7 @@ int main(int argc, char *argv[])
 	// Upload VU1 quad code
 	renderer_upload_vu1(&renderer, &VU1Draw3D_CodeStart, &VU1Draw3D_CodeEnd, 8, 496);
 
-	SETVECTOR(renderer.camera_pos, 0.00f, WORLD_HEIGHT, 0.00f, 1.00f);
+	SETVECTOR(renderer.camera_pos, 0.00f, 240.0f, 0.00f, 1.00f);
 	SETVECTOR(renderer.camera_rot, 0.00f, 0.00f, M_PIf, 1.00f); // flip upside down...
 
 	renderer_setup(&renderer, 640, 448);

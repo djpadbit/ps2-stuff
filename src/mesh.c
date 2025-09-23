@@ -13,6 +13,7 @@
 #include <resources.h>
 
 #include <stdio.h>
+#include <time.h>
 
 int mesh_create(mesh_t *mesh, u32 count) {
 	if (!mesh)
@@ -91,6 +92,8 @@ void mesh_draw(mesh_t *mesh, renderer_t *rend) {
 	if (!mesh || !rend)
 		return;
 
+	clock_t start = clock();
+
 	MATRIX local_world, local_screen;
 	create_local_world(local_world, mesh->pos, mesh->rot);
 	create_local_screen(local_screen, local_world, rend->world_view, rend->view_screen);
@@ -111,9 +114,9 @@ void mesh_draw(mesh_t *mesh, renderer_t *rend) {
 	for (int i=0;i<16;i++)
 		packet2_add_float(packet, local_screen[i]);
 
-	packet2_add_float(packet, 2048.0F);						// scale
-	packet2_add_float(packet, 2048.0F);						// scale
-	packet2_add_float(packet, ((float)0xFFFFFF) / 32.0F);	// scale
+	packet2_add_float(packet, 2048.0F);						// GS screen scale
+	packet2_add_float(packet, 2048.0F);						// GS screen scale
+	packet2_add_float(packet, ((float)0xFFFFFF) / 32.0F);	// GS screen scale
 	packet2_add_u32(packet, mesh->vert_count);				// Number of verts
 
 	packet2_utils_gif_add_set(packet, 1);
@@ -130,21 +133,26 @@ void mesh_draw(mesh_t *mesh, renderer_t *rend) {
 
 	u32 vert_drawn = 0;
 
+	clock_t base = clock();
+
 	// While we didn't send everything, append a new batch of data
 	while (vert_drawn != mesh->vert_count) {
 		// The qwords we have to work with to fit vertex data + GS data after processing
-		u32 max_qwords = rend->vu1_dbf_offset-vif_added_qw-4; // -4 for the giftag we append right after
+		// Keep a multiple of vertex to allow for some slack in the VCL loop unrolling
+		u32 max_qwords = rend->vu1_dbf_offset - vif_added_qw - 4 - vert_multiple * (1 + 3); // -4 for the giftag we append right after
 		// The verts we have left to draw
 		u32 max_verts = mesh->vert_count - vert_drawn;
 
 		u32 to_draw;
-		for (to_draw = 0; (to_draw + 1) * (1 + 3) < max_qwords && to_draw < max_verts; to_draw += vert_multiple);
+		// (to_draw + vert_multiple) because we are looking ahead one vertex mult to see if it fits
+		// Vertex size is 1 for the input & 3 for the GS output (XYZ, RGB, STQ)
+		for (to_draw = 0; (to_draw + vert_multiple) * (1 + 3) < max_qwords && to_draw < max_verts; to_draw += vert_multiple);
 
 		// In case the count is not divisible by vert_multiple... (shouldn't happen)
 		if (to_draw > max_verts)
 			to_draw = max_verts;
 
-		//printf("max_qwords=%d, calc_qwords=%d, to_draw=%d, vert_draw=%d, verts=%d\n", max_qwords, to_draw * (1 + 3), to_draw, vert_drawn, mesh->vert_count);
+		printf("max_qwords=%d, calc_qwords=%d, to_draw=%d, vert_draw=%d, verts=%d\n", max_qwords, to_draw * (1 + 3), to_draw, vert_drawn, mesh->vert_count);
 
 		// Add the GIF prim tag
 		packet2_utils_vu_open_unpack(packet, vif_added_qw, 1);
@@ -177,10 +185,19 @@ void mesh_draw(mesh_t *mesh, renderer_t *rend) {
 
 	packet2_utils_vu_add_end_tag(packet);
 
+	clock_t finish = clock();
+
 	//printf("Final qw count: %d, %d\n", packet2_get_qw_count(packet), mesh->vert_count);
 
 	// Wait for the old vif packet to finish
 	dma_channel_wait(DMA_CHANNEL_VIF1, 0);
+	//dma_wait_fast();
+
+	clock_t wait = clock();
 	// Send the new one
-	dma_channel_send_packet2(packet, DMA_CHANNEL_VIF1, 1);
+	dma_channel_send_packet2(packet, DMA_CHANNEL_VIF1, 0);
+
+	clock_t send = clock();
+
+	//printf("%ldus (%ldus/%ldus/%ldus/%ldus) %d, %d\n", send-start, base-start, finish-base, wait-finish, send-wait,  packet2_get_qw_count(packet), mesh->vert_count);
 }

@@ -3,6 +3,14 @@
 ;-----VCL CODE------------
 ;-------------------------
 ;-------------------------
+; === __LP__ EXPL_vu_draw_vcl_vertexLoop__MAIN_LOOP:
+; ===          normal1 : optimal=19 clid=0 mlid=1 size=(19) 
+; ===            hDown : optimal=19 clid=0 mlid=1 size=(19) 
+; ===             vuta : optimal=19 clid=0 mlid=1 size=(19) 
+; ===              dUp : optimal=19 clid=0 mlid=1 size=(19) 
+; ===           normal : optimal=19 clid=0 mlid=1 size=(19) 
+; ===          another : optimal=19 clid=0 mlid=1 size=(19) 
+; ===          normal2 : optimal=19 clid=0 mlid=1 size=(19) 
 ; =================================================
 ; flowMon::Emit() vcl 1.4beta7 produced this code:
 		.vu
@@ -31,7 +39,7 @@ __v_vu_draw_vcl_4:
          NOP                                                        fcset         0                                   
          addi.y        VF01,VF00,I                                  lqi           VF10,(VI07++)                       
 runStart:
-; _LNOPT_w=[ normal2 ] 10 [12 0] 13   [runStart]
+; _LNOPT_w=[ normal2 ] 23 [21 0] 32   [runStart]
          NOP                                                        lqi           VF11,(VI07++)                       
          NOP                                                        mtir          VI08,VF11x                                 ;	STALL_LATENCY ?3
          NOP                                                        iand          VI08,VI08,VI06                      
@@ -42,33 +50,54 @@ runStart:
          NOP                                                        sqi           VF09,(VI10++)                       
          NOP                                                        iadd          VI09,VI07,VI08                      
          NOP                                                        sqi           VF11,(VI10++)                       
-vertexLoop:
-; _LNOPT_w=[ normal2 ] 25 [35 20] 35   [vertexLoop]
          NOP                                                        lqi           VF11,(VI07++)                       
-         itof4.xyz     VF11,VF11                                    NOP                                                      ;	STALL_LATENCY ?3
-         mulax         ACC,VF02,VF11x                               NOP                                                      ;	STALL_LATENCY ?3
-         madday        ACC,VF03,VF11y                               mtir          VI11,VF11w                          
-         maddaz        ACC,VF04,VF11z                               iand          VI13,VI11,VI04                      
-         maddw         VF11,VF05,VF00w                              iand          VI12,VI11,VI05                      
-         NOP                                                        mfir.x        VF12,VI13                           
-         NOP                                                        mfir.y        VF12,VI12                           
+         itof4.xyz     VF12,VF11                                    mtir          VI11,VF11w                                 ;	STALL_LATENCY ?3
          NOP                                                        iand          VI01,VI11,VI03                      
-         clipw.xyz     VF11xyz,VF11w                                div           Q,VF00w,VF11w                       
-         NOP                                                        lq            VF13,0(VI01)                        
-         itof0.xy      VF12,VF12                                    NOP                                               
-         adda.xy       ACC,VF13,VF00                                NOP                                                      ;	STALL_LATENCY ?2
-         madd.xy       VF12,VF01,VF12                               NOP                                               
-         mulq.xyz      VF11,VF11,Q                                  move.zw       VF12,VF13                           
-         mulaw.xyz     ACC,VF06,VF00w                               isubiu        VI08,VI08,1                         
-         madd.xyz      VF11,VF11,VF06                               iand          VI11,VI11,VI02                             ;	STALL_LATENCY ?2
-         mulq          VF12,VF12,Q                                  fcand         VI01,262143                         
-         NOP                                                        ior           VI11,VI01,VI11                      
-         NOP                                                        iaddiu        VI11,VI11,0x00007fff                
-         ftoi4.xyz     VF11,VF11                                    isw.w         VI11,2(VI10)                        
-         NOP                                                        sqi           VF12,(VI10++)                       
+         NOP                                                        lq            VF11,0(VI01)                        
+         NOP                                                        iand          VI01,VI11,VI04                      
+         mulax         ACC,VF02,VF12x                               iand          VI12,VI11,VI05                      
+         madday        ACC,VF03,VF12y                               mfir.y        VF13,VI12                           
+         maddaz        ACC,VF04,VF12z                               mfir.x        VF13,VI01                           
+         maddw         VF12,VF05,VF00w                              NOP                                               
+         itof0.xy      VF13,VF13                                    NOP                                                      ;	STALL_LATENCY ?2
+         clipw.xyz     VF12xyz,VF12w                                div           Q,VF00w,VF12w                       
+         adda.xy       ACC,VF11,VF00                                isubiu        VI08,VI08,1                         
+         madd.xy       VF11,VF01,VF13                               iand          VI11,VI11,VI02                             ;	STALL_LATENCY ?1
+EXPL_vu_draw_vcl_vertexLoop__MAIN_LOOP:
+; _LPOPT_w=[ normal1 ] 19 [19 19] 19   [EXPL_vu_draw_vcl_vertexLoop__MAIN_LOOP]
+         NOP                                                        lqi           VF13,(VI07++)                       
+         NOP                                                        fcand         VI01,262143                         
+         NOP                                                        isubiu        VI08,VI08,1                         
+         mulq.xyz      VF14,VF12,Q                                  ior           VI11,VI01,VI11                      
+         itof4.xyz     VF12,VF13                                    mtir          VI01,VF13w                          
+         mulq          VF13,VF11,Q                                  iand          VI12,VI01,VI03                      
+         mulaw.xyz     ACC,VF06,VF00w                               lq            VF11,0(VI12)                        
+         madd.xyz      VF14,VF14,VF06                               iand          VI12,VI01,VI04                      
+         mulax         ACC,VF02,VF12x                               iand          VI13,VI01,VI05                      
+         madday        ACC,VF03,VF12y                               mfir.y        VF15,VI13                           
+         maddaz        ACC,VF04,VF12z                               mfir.x        VF15,VI12                           
+         maddw         VF12,VF05,VF00w                              iaddiu        VI11,VI11,0x00007fff                
+         NOP                                                        isw.w         VI11,2(VI10)                        
+         ftoi4.xyz     VF14,VF14                                    iand          VI11,VI01,VI02                      
+         itof0.xy      VF13,VF15                                    sqi           VF13,(VI10++)                       
+         clipw.xyz     VF12xyz,VF12w                                div           Q,VF00w,VF12w                       
          NOP                                                        sqi           VF10,(VI10++)                       
-         NOP                                                        ibne          VI08,VI00,vertexLoop                
-         NOP                                                        sqi.xyz       VF11,(VI10++)                       
+         adda.xy       ACC,VF11,VF00                                ibne          VI08,VI00,EXPL_vu_draw_vcl_vertexLoop__MAIN_LOOP
+         madd.xy       VF11,VF01,VF13                               sqi.xyz       VF14,(VI10++)                       
+; _LNOPT_w=[ ] 13 [13 0] 16   [EXPL_vu_draw_vcl_vertexLoop__EPI0]
+         NOP                                                        NOP                                               
+         NOP                                                        NOP                                               
+         NOP                                                        NOP                                               
+         mulq.xyz      VF12,VF12,Q                                  NOP                                               
+         mulaw.xyz     ACC,VF06,VF00w                               NOP                                               
+         madd.xyz      VF12,VF12,VF06                               NOP                                                      ;	STALL_LATENCY ?2
+         mulq          VF11,VF11,Q                                  fcand         VI01,262143                         
+         NOP                                                        ior           VI11,VI01,VI11                      
+         ftoi4.xyz     VF12,VF12                                    iaddiu        VI11,VI11,0x00007fff                       ;	STALL_LATENCY ?1
+         NOP                                                        isw.w         VI11,2(VI10)                        
+         NOP                                                        sqi           VF11,(VI10++)                       
+         NOP                                                        sqi           VF10,(VI10++)                       
+         NOP                                                        sqi.xyz       VF12,(VI10++)                       
 ; _LNOPT_w=[ normal2 ] 1 [1 0] 1   [__v_vu_draw_vcl_8]
          NOP                                                        xgkick        VI09                                
 ; _LNOPT_w=[ normal2 ] 2 [0 0] 2   [__v_vu_draw_vcl_9]
@@ -79,10 +108,10 @@ vertexLoop:
          NOP                                                        xtop          VI07                                
 		.align 4
 VU1Draw3D_CodeEnd:
-;	iCount=58
+;	iCount=78
 ; register stats:
 ;  14 VU User integer
-;  14 VU User floating point
+;  16 VU User floating point
 ;-------------------------
 ;-------------------------
 ;-------------------------

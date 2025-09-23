@@ -31,59 +31,7 @@ int inputman_load_iop() {
 	return 0;
 }
 
-static int inputman_wait_padrdy(int port, int slot, int no_wait) {
-	char stateString[16];
-	int state = padGetState(port, slot);
-	if (state == PAD_STATE_DISCONN)
-		return -1;
-
-	if (no_wait) {
-		if ((state != PAD_STATE_STABLE) && (state != PAD_STATE_FINDCTP1))
-			return -1;
-	}
-
-	int lastState = -1;
-	while ((state != PAD_STATE_STABLE) && (state != PAD_STATE_FINDCTP1)) {
-		if (state != lastState) {
-			padStateInt2String(state, stateString);
-			printf("Please wait, pad(%d,%d) is in state %s\n",
-					   port, slot, stateString);
-		}
-		lastState = state;
-		state = padGetState(port, slot);
-	}
-
-	// Were the pad ever 'out of sync'?
-	if (lastState != -1) {
-		printf("Pad OK!\n");
-	}
-
-	return 0;
-}
-
-int inputman_init(input_manager_t *man, int port, int slot) {
-	if (!man)
-		return -1;
-
-	memset(man, 0, sizeof(input_manager_t));
-
-	man->pad_data = memalign(64, 256);
-	if (!man->pad_data)
-		return -1;
-
-	man->port = port;
-	man->slot = slot;
-
-	if (!padPortOpen(port, slot, man->pad_data)) {
-		free(man->pad_data);
-		return -1;
-	}
-
-	if (inputman_wait_padrdy(port, slot, 0) < 0) {
-		free(man->pad_data);
-		return -1;
-	}
-
+static int inputman_setup_pad(input_manager_t *man, int port, int slot) {
 	// How many different modes can this device operate in?
 	// i.e. get # entrys in the modetable
 	int modes = padInfoMode(port, slot, PAD_MODETABLE, -1);
@@ -126,11 +74,80 @@ int inputman_init(input_manager_t *man, int port, int slot) {
 	return 0;
 }
 
+static inline int inputman_is_rdy(int state) {
+	return (state == PAD_STATE_STABLE) || (state == PAD_STATE_FINDCTP1);
+} 
+
+
+static int inputman_padrdy(input_manager_t *man, int wait) {
+	char stateString[16];
+	int state = padGetState(man->port, man->slot);
+	int ret = 0;
+	if (state == PAD_STATE_DISCONN)
+		ret = -1;
+
+	if ((state != PAD_STATE_STABLE) && (state != PAD_STATE_FINDCTP1))
+		ret = -1;
+
+	if (wait) {
+		int lastState = -1;
+		while ((state != PAD_STATE_STABLE) && (state != PAD_STATE_FINDCTP1)) {
+			if (state != lastState) {
+				padStateInt2String(state, stateString);
+				printf("Please wait, pad(%d,%d) is in state %s\n",
+						   man->port, man->slot, stateString);
+			}
+			lastState = state;
+			state = padGetState(man->port, man->slot);
+		}
+
+		// Were the pad ever 'out of sync'?
+		if (lastState != -1) {
+			printf("Pad OK!\n");
+		}
+	}
+
+	if (ret == 0 && !man->initialized) {
+		if (inputman_setup_pad(man, man->port, man->slot) >= 0)
+			man->initialized = 1;
+		else
+			ret = -1;
+	}
+
+	return ret;
+}
+
+int inputman_init(input_manager_t *man, int port, int slot) {
+	if (!man)
+		return -1;
+
+	memset(man, 0, sizeof(input_manager_t));
+
+	man->pad_data = memalign(64, 256);
+	if (!man->pad_data)
+		return -1;
+
+	man->port = port;
+	man->slot = slot;
+	man->initialized = 0;
+
+	if (!padPortOpen(port, slot, man->pad_data)) {
+		free(man->pad_data);
+		return -1;
+	}
+
+	// This will init the pad if present & optionally get data
+	inputman_read(man);
+
+	return 0;
+}
+
 int inputman_read(input_manager_t *man) {
 	if (!man)
 		return -1;
 
-	if (inputman_wait_padrdy(man->port, man->slot, 1) < 0)
+	// Check if pad is alive, it will try to bring up the pad if dead
+	if (inputman_padrdy(man, 0) < 0)
 		return -1;
 	if (padRead(man->port, man->slot, &man->buttons) == 0)
 		return -1;

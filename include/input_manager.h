@@ -6,6 +6,7 @@
 
 typedef struct {
 	int port, slot;
+	int initialized;
 	u8 *pad_data;
 	struct padButtonStatus buttons;
 } input_manager_t;

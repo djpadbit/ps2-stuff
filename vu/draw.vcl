@@ -78,8 +78,8 @@ runStart:
     mtir     vertCount,      primTag[x]                 ; load vert count with EOP bit
     iand     vertCount,      vertCount,   vertCountMask ; Mask out the EOP bit to get only the vert count
 
-    iadd    kickAddress,    iBase,        vertCount     ; pointer for XGKICK
-    iadd    destAddress,    iBase,        vertCount     ; helper pointer for data inserting
+    iadd     kickAddress,    iBase,       vertCount     ; pointer for XGKICK
+    iadd     destAddress,    iBase,       vertCount     ; helper pointer for data inserting
 
     ;////////////////////////////////////////////
 
@@ -96,6 +96,8 @@ runStart:
     ;/////////////// --- Loop --- ///////////////
     ;iadd vertexCounter, VI00, vertCount ; loop vertCount times
     vertexLoop:
+    ; Loop unrolling (4 min iterations, 4 slop count)
+    --LoopCS 4,4
 
         ;////////// --- Load loop data --- //////////
         lqi vertex, (iBase++)          ; load xyz & flags
@@ -133,24 +135,23 @@ runStart:
         mulq.xyz    vertex,    vertex,      q
         mula.xyz    acc,       scale,       vf00[w]     ; scale to GS screen space
         madd.xyz    vertex,    vertex,      scale       ; multiply and add the scales -> vert = vert * scale + scale
-        ftoi4.xyz   vertex,    vertex                  ; convert vertex to 12:4 fixed point format
+        ftoi4.xyz   vertex,    vertex                   ; convert vertex to 12:4 fixed point format
         ;////////////////////////////////////////////
 
 
         ;//////////////// --- ST --- ////////////////
-        iand        stIdx,     vertexFlags, stIdxFlagsMask
-        lq          stBase,    0(stIdx)
-        move.zw     stq,       stBase
-        adda.xy     acc,       stBase,      VF00 
+        iand        stIdx,     vertexFlags, stIdxFlagsMask      ; Get the ST ID by masking it from the flags
+        lq          stq,       0(stIdx)                         ; Load the base ST from the top of the memory by using the id
+        adda.xy     acc,       stq,         VF00                ; Move xy it into acc for the last madd 
 
-        iand        texX,      vertexFlags, stTexXFlagsMask
-        mfir.x      texOffset, texX
-        iand        texY,      vertexFlags, stTexYFlagsMask
-        mfir.y      texOffset, texY
+        iand        texX,      vertexFlags, stTexXFlagsMask     ; Mask out texture X coord
+        mfir.x      texOffset, texX                             ; And move the integer into the float register
+        iand        texY,      vertexFlags, stTexYFlagsMask     ; Mask out texture Y coord
+        mfir.y      texOffset, texY                             ; And move the integer into the float register
 
-        itof0.xy    texOffset, texOffset
-        madd.xy     stq,       stOffset,    texOffset
-        mulq        modStq,    stq,         q
+        itof0.xy    texOffset, texOffset                        ; Turn integer into floats
+        madd.xy     stq,       stOffset,    texOffset           ; STQ = ACC (base ST coords) + stOffset (bitshift + scale) * texOffset (Tex X,Y)
+        mulq        modStq,    stq,         q                   ; Perspective correction
         ;////////////////////////////////////////////
 
 
@@ -160,8 +161,8 @@ runStart:
         sqi.xyz vertex,  (destAddress++)      ; XYZ2
         ;////////////////////////////////////////////
 
-        iaddi   vertCount,  vertCount,  -1  ; decrement the loop counter 
-        ibne    vertCount,  VI00,   vertexLoop ; and repeat if needed
+        iaddi   vertCount,  vertCount,  -1         ; decrement the loop counter 
+        ibne    vertCount,  VI00,       vertexLoop ; and repeat if needed
 
     ;//////////////////////////////////////////// 
 
