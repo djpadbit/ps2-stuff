@@ -13,7 +13,7 @@
 #define CHUNK_POS(x) ((x)>>4)
 
 typedef struct {
-	u32 data[CHUNK_WIDTH][CHUNK_DEPTH][WORLD_HEIGHT];
+	u8 data[CHUNK_WIDTH][CHUNK_DEPTH][WORLD_HEIGHT];
 	s64 x,z;
 	u8 xoffset;
 } chunkdata_t;

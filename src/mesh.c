@@ -152,7 +152,7 @@ void mesh_draw(mesh_t *mesh, renderer_t *rend) {
 		if (to_draw > max_verts)
 			to_draw = max_verts;
 
-		printf("max_qwords=%d, calc_qwords=%d, to_draw=%d, vert_draw=%d, verts=%d\n", max_qwords, to_draw * (1 + 3), to_draw, vert_drawn, mesh->vert_count);
+		//printf("max_qwords=%d, calc_qwords=%d, to_draw=%d, vert_draw=%d, verts=%d\n", max_qwords, to_draw * (1 + 3), to_draw, vert_drawn, mesh->vert_count);
 
 		// Add the GIF prim tag
 		packet2_utils_vu_open_unpack(packet, vif_added_qw, 1);
