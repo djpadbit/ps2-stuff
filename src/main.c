@@ -99,8 +99,9 @@ struct chunkinfo {
 static struct chunkinfo __attribute__((aligned(128))) chunk_queue[CHUNK_QUEUE_SIZE];
 static u16 __attribute__((aligned(128))) chunk_visited[CHUNK_COMPILED_COUNT_PLANE];
 
-#define CHUNK_TRAVERSED(x,y,z) (((chunk_visited[CHUNK_POS(x) * CHUNK_VIEWDIST + CHUNK_POS(z)] >> (y+1))&1))
-#define CHUNK_TRAVERSE(x,y,z) (chunk_visited[CHUNK_POS(x) * CHUNK_VIEWDIST + CHUNK_POS(z)] |= 1 << (y+1))
+#define CHUNK_TRAVIDX(x,z) (CHUNK_POS(x) * CHUNK_VIEWDIST + CHUNK_POS(z))
+#define CHUNK_TRAVERSED(x,y,z) (((chunk_visited[CHUNK_TRAVIDX(x,z)] >> (y+1))&1))
+#define CHUNK_TRAVERSE(x,y,z) (chunk_visited[CHUNK_TRAVIDX(x,z)] |= 1 << (y+1))
 
 static u16 queue_widx;
 static u16 queue_ridx;
@@ -280,10 +281,26 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 		add_chunk(chunkx, chunkyoff, chunkz, base_compidx, FC_END, 0);
 
 		struct chunkinfo info;
-		VECTOR chunk_pos;
-		chunk_pos[3] = 0.0f;
 
+		clock_t draw_time = 0;
+		clock_t add_face_time = 0;
+		clock_t face_seen_time = 0;
+		clock_t face_seen_cnt = 0;
+		clock_t traversed_time = 0;
+		clock_t traversed_cnt = 0;
+		clock_t find_time = 0;
+		clock_t find_cnt = 0;
+		clock_t frust_time = 0;
+		clock_t frust_cnt = 0;
+		clock_t add_time = 0;
+		clock_t add_cnt = 0;
+
+		u32 max_size = 0;
 		while (pop_chunk(&info) != -1) {
+			u32 size = queue_size();
+			if (size > max_size)
+				max_size = size;
+			clock_t start_it = clock();
 
 			u16 comp_idx = (info.idx*CHUNK_COMPILED_YCOUNT) + info.y;
 			u16 vis = 0xFFFF;
@@ -297,28 +314,91 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 				cntnFrsut++;
 			}
 
+			clock_t draw_time_it = clock();
+
 			//printf("(%lld,%d,%lld) - %d,%d,%d,%d | %d|%d %d\n", info.x, info.y, info.z, info.idx, info.from, info.faces_seen, vis, queue_ridx, queue_widx, queue_size());
-
 			for (enum facing to = 0;to<FC_END;to++) {
-				if (to == info.from)
+				clock_t start_face = clock();
+				if (__builtin_expect(to == info.from, 0))
 					continue;
-				s64 newx = info.x + (((s64)facing_dir[to][0]) * CHUNK_WIDTH);
-				s64 newz = info.z + (((s64)facing_dir[to][2]) * CHUNK_DEPTH);
-				s16 newy = info.y + ((s64)facing_dir[to][1]);
 
-				chunk_pos[0] = newx;
-				chunk_pos[1] = newy * CHUNK_HEIGHT;
-				chunk_pos[2] = newz;
+				// Slight improvements when at top & bottom
+				if (__builtin_expect(info.y == CHUNK_COMPILED_YCOUNT && to == FC_UP, 0) || __builtin_expect(info.y == -1 && to == FC_DOWN, 0))
+					continue;
 
 				// Check if we're going backwards
-				if (FACE_SEEN(info.faces_seen, facing_opposite[to]))
+				//u8 see = FACE_SEEN(info.faces_seen, facing_opposite[to]);
+				u8 see = 0;
+				switch (to) {
+					case FC_RIGHT:
+						see = FACE_SEEN(info.faces_seen, FC_LEFT);
+						break;
+					case FC_LEFT:
+						see = FACE_SEEN(info.faces_seen, FC_RIGHT);
+						break;
+					case FC_UP:
+						see = FACE_SEEN(info.faces_seen, FC_DOWN);
+						break;
+					case FC_DOWN:
+						see = FACE_SEEN(info.faces_seen, FC_UP);
+						break;
+					case FC_FRONT:
+						see = FACE_SEEN(info.faces_seen, FC_BACK);
+						break;
+					case FC_BACK:
+						see = FACE_SEEN(info.faces_seen, FC_FRONT);
+						break;
+					default:
+						break;
+				}
+				clock_t seen_face = clock();
+				face_seen_time += seen_face - start_face;
+				face_seen_cnt++;
+				if (see) {
 					continue;
+				}
+
+				s64 newx = info.x; //+ (((s64)face_vec[0]) * CHUNK_WIDTH);
+				s64 newz = info.z; //+ (((s64)face_vec[2]) * CHUNK_DEPTH);
+				s16 newy = info.y; //+ ((s64)face_vec[1]);
+				switch (to) {
+					case FC_RIGHT:
+						newx += CHUNK_WIDTH;
+						break;
+					case FC_LEFT:
+						newx -= CHUNK_WIDTH;
+						break;
+					case FC_UP:
+						newy += 1;
+						break;
+					case FC_DOWN:
+						newy -= 1;
+						break;
+					case FC_FRONT:
+						newz += CHUNK_DEPTH;
+						break;
+					case FC_BACK:
+						newz -= CHUNK_DEPTH;
+						break;
+					default:
+						break;
+				}
 
 				// We've already seen this one
-				if (CHUNK_TRAVERSED(newx-chunkx + ((CHUNK_VIEWDIST/2)*CHUNK_WIDTH), newy, newz-chunkz + ((CHUNK_VIEWDIST/2)*CHUNK_DEPTH)))
+				//u8 trav = CHUNK_TRAVERSED(newx-chunkx + ((CHUNK_VIEWDIST/2)*CHUNK_WIDTH), newy, newz-chunkz + ((CHUNK_VIEWDIST/2)*CHUNK_DEPTH));
+				u16 trav_id = CHUNK_TRAVIDX(newx-chunkx + ((CHUNK_VIEWDIST/2)*CHUNK_WIDTH), newz-chunkz + ((CHUNK_VIEWDIST/2)*CHUNK_DEPTH));
+				u8 trav = (chunk_visited[trav_id] >> (newy+1))&1;
+				clock_t trav_face = clock();
+				traversed_time += trav_face - seen_face;
+				traversed_cnt++;
+				if (trav)
 					continue;
 
 				int cidx = chunk_manager_find_compiled_idx(&chunk_man, newx, newz);
+
+				clock_t find_face = clock();
+				find_time += find_face - trav_face;
+				find_cnt++;
 
 				// Outside of the chunks we have
 				if (newy < -1 || newy > CHUNK_COMPILED_YCOUNT || cidx == -1)
@@ -327,16 +407,25 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 				if (info.from != FC_END && !chunk_manager_check_vis(vis, info.from, to))
 					continue;
 
+				VECTOR chunk_pos = {newx, newy * CHUNK_HEIGHT, newz, 0.0f};
 				u8 in_frust = renderer_check_box_frustum(rend, chunk_pos, (float*)chunk_extends);
+				clock_t frust_frace_time = clock();
+				frust_time += frust_frace_time - find_face;
+				frust_cnt++;
 				//chunks->meshes[i].color.val = in_frust ? 0x80008000 : 0x80000080;
 				if (!in_frust)
 					continue;
 
-				CHUNK_TRAVERSE(newx-chunkx + ((CHUNK_VIEWDIST/2)*CHUNK_WIDTH), newy, newz-chunkz + ((CHUNK_VIEWDIST/2)*CHUNK_DEPTH));
+				//CHUNK_TRAVERSE(newx-chunkx + ((CHUNK_VIEWDIST/2)*CHUNK_WIDTH), newy, newz-chunkz + ((CHUNK_VIEWDIST/2)*CHUNK_DEPTH));
+				chunk_visited[trav_id] |= 1 << (newy+1);
 
 				//printf("P(%lld,%d,%lld) - %d,%d,%d\n", newx, newy, newz, cidx, facing_opposite[to], FACE_SEE(info.faces_seen, to));
 				add_chunk(newx, newy, newz, cidx, facing_opposite[to], FACE_SEE(info.faces_seen, to));
+				add_time += clock() - frust_frace_time;
+				add_cnt++;
 			}
+			add_face_time += clock()-draw_time_it;
+			draw_time += draw_time_it-start_it;
 		}
 
 		clock_t render_end = clock();
@@ -357,8 +446,10 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 		if (usperbudget != 0)
 			usperbudget = (end_time-render_end) / usperbudget;
 
-		printf("%ldus / %ldus (%ldus/%ldus/%ldus) (%.2f,%.2f,%.2f) (%.2f,%.2f,%.2f) %d/%d (%ldus/budget) %d/%d\n", end_time-start_time, start_time-last_time, start_render-start_time,
-											render_end-start_render, end_time-render_end, rend->camera_pos[0], rend->camera_pos[1], rend->camera_pos[2],
+		printf("%ldus / %ldus (%ldus/%ldus/%ldus) (%ldus/%ldus) %ld/%ld/%ld/%ld/%ld |%d| (%.2fus/%.2fus/%.2fus/%.2fus/%.2fus) (%.2f,%.2f,%.2f) (%.2f,%.2f,%.2f) %d/%d (%ldus/budget) %d/%d\n", end_time-start_time, start_time-last_time, start_render-start_time,
+											render_end-start_render, end_time-render_end, draw_time, add_face_time, face_seen_cnt, traversed_cnt, find_cnt, frust_cnt, add_cnt, max_size,
+											((float)face_seen_time)/face_seen_cnt, ((float)traversed_time)/traversed_cnt, 
+											((float)find_time)/find_cnt, ((float)frust_time)/frust_cnt, ((float)add_time)/add_cnt, rend->camera_pos[0], rend->camera_pos[1], rend->camera_pos[2],
 											DEGS(rend->camera_rot[0]), DEGS(rend->camera_rot[1]), DEGS(rend->camera_rot[2]), budget, start_budget, usperbudget, cntFrust, cntnFrsut);
 
 		last_time = start_time;
