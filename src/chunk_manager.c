@@ -168,6 +168,7 @@ static int chunk_manager_compile(chunk_manager_t *chunk_man, int chunk_comp_idx,
 		chunk_man->meshes[chunk_comp_idx].pos[0] = cx;
 		chunk_man->meshes[chunk_comp_idx].pos[1] = yoff;
 		chunk_man->meshes[chunk_comp_idx].pos[2] = cz;
+		mesh_update_matrix(&chunk_man->meshes[chunk_comp_idx]);
 		//printf("%d %lld %d %lld\n", vsize, cx, yoff, cz);
 	}
 

@@ -31,6 +31,10 @@ int inputman_load_iop() {
 	return 0;
 }
 
+static inline int inputman_is_rdy(int state) {
+	return (state == PAD_STATE_STABLE) || (state == PAD_STATE_FINDCTP1);
+}
+
 static int inputman_setup_pad(input_manager_t *man, int port, int slot) {
 	// How many different modes can this device operate in?
 	// i.e. get # entrys in the modetable
@@ -69,22 +73,22 @@ static int inputman_setup_pad(input_manager_t *man, int port, int slot) {
 	printf("Enabling dual shock functions\n");
 
 	// When using MMODE_LOCK, user cant change mode with Select button
-	padSetMainMode(port, slot, PAD_MMODE_DUALSHOCK, PAD_MMODE_LOCK);
+	if (padSetMainMode(port, slot, PAD_MMODE_DUALSHOCK, PAD_MMODE_LOCK) != 1)
+		return -1;
 
-	return 0;
+	man->initialized = 1;
+
+	return inputman_is_rdy(padGetState(man->port, man->slot)) ? 0 : -1;
 }
-
-static inline int inputman_is_rdy(int state) {
-	return (state == PAD_STATE_STABLE) || (state == PAD_STATE_FINDCTP1);
-} 
-
 
 static int inputman_padrdy(input_manager_t *man, int wait) {
 	char stateString[16];
 	int state = padGetState(man->port, man->slot);
 	int ret = 0;
-	if (state == PAD_STATE_DISCONN)
+	if (state == PAD_STATE_DISCONN) {
+		man->initialized = 0;
 		ret = -1;
+	}
 
 	if ((state != PAD_STATE_STABLE) && (state != PAD_STATE_FINDCTP1))
 		ret = -1;
@@ -107,12 +111,8 @@ static int inputman_padrdy(input_manager_t *man, int wait) {
 		}
 	}
 
-	if (ret == 0 && !man->initialized) {
-		if (inputman_setup_pad(man, man->port, man->slot) >= 0)
-			man->initialized = 1;
-		else
-			ret = -1;
-	}
+	if (ret == 0 && !man->initialized)
+		ret = inputman_setup_pad(man, man->port, man->slot);
 
 	return ret;
 }

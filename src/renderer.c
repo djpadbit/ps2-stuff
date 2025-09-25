@@ -215,6 +215,7 @@ void renderer_set_perspective(renderer_t *rend, float vfov, float near, float fa
 
 void renderer_update_matrices(renderer_t *rend) {
 	create_world_view(rend->world_view, rend->camera_pos, rend->camera_rot);
+	matrix_multiply(rend->local_screen, rend->world_view, rend->view_screen);
 }
 
 
@@ -301,26 +302,25 @@ static inline u8 renderer_check_in_clip(MATRIX mat, float x, float y, float z) {
 	vector_apply(vec, vec, mat);
 	// https://bruop.github.io/frustum_culling/
 	//printf("%.2f %.2f %.2f %.2f\n", vec[0], vec[1], vec[2], vec[3]);
-	return 	vec[3] >= vec[0] && vec[0] >= -vec[3] &&
-			vec[3] >= vec[1] && vec[1] >= -vec[3] &&
-			0 >= vec[2] && vec[2] >= -vec[3];
+	// Value i took from my ass, i don't know where it come from, it just work(tm)
+	float val = vec[3]*0.25f;
+	return 	 0  >= vec[2] && vec[2] >= -vec[3] &&
+			val >= vec[0] && vec[0] >= -val &&
+			val >= vec[1] && vec[1] >= -val;
 }
 
 u8 renderer_check_box_frustum(renderer_t *rend, VECTOR min, VECTOR size) {
 	VECTOR max;
 	vector_add(max, min, size);
 
-	MATRIX local_screen;
-	matrix_multiply(local_screen, rend->world_view, rend->view_screen);
-
-	return  renderer_check_in_clip(local_screen, min[0], min[1], min[2]) ||
-			renderer_check_in_clip(local_screen, max[0], min[1], min[2]) ||
-			renderer_check_in_clip(local_screen, min[0], max[1], min[2]) ||
-			renderer_check_in_clip(local_screen, max[0], max[1], min[2]) ||
-			renderer_check_in_clip(local_screen, min[0], min[1], max[2]) ||
-			renderer_check_in_clip(local_screen, max[0], min[1], max[2]) ||
-			renderer_check_in_clip(local_screen, min[0], max[1], max[2]) ||
-			renderer_check_in_clip(local_screen, max[0], max[1], max[2]);
+	return  renderer_check_in_clip(rend->local_screen, min[0], min[1], min[2]) ||
+			renderer_check_in_clip(rend->local_screen, max[0], min[1], min[2]) ||
+			renderer_check_in_clip(rend->local_screen, min[0], max[1], min[2]) ||
+			renderer_check_in_clip(rend->local_screen, max[0], max[1], min[2]) ||
+			renderer_check_in_clip(rend->local_screen, min[0], min[1], max[2]) ||
+			renderer_check_in_clip(rend->local_screen, max[0], min[1], max[2]) ||
+			renderer_check_in_clip(rend->local_screen, min[0], max[1], max[2]) ||
+			renderer_check_in_clip(rend->local_screen, max[0], max[1], max[2]);
 }
 
 packet2_t *renderer_get_vif_packet(renderer_t *rend) {

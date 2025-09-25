@@ -10,6 +10,7 @@
 #include <renderer.h>
 
 typedef struct {
+	MATRIX __attribute__((aligned(64))) local_world;
 	VECTOR __attribute__((aligned(16))) pos;
 	VECTOR __attribute__((aligned(16))) rot;
 
@@ -40,5 +41,8 @@ void mesh_init(mesh_t *mesh, u32 count, qvert_t *verts);
 void mesh_update(mesh_t *mesh, u32 count, qvert_t *verts);
 void mesh_set_quad_prim(mesh_t *mesh, texbuffer_t *tbuff);
 void mesh_draw(mesh_t *mesh, renderer_t *rend);
+
+// To call when updated pos || rot
+void mesh_update_matrix(mesh_t *mesh);
 
 #endif

@@ -16,6 +16,8 @@ typedef struct {
 	packet2_t clear_packet;
 	MATRIX view_screen __attribute__((aligned(64)));
 	MATRIX world_view __attribute__((aligned(64)));
+	// Frustum camera transform matrix
+	MATRIX local_screen __attribute__((aligned(64)));
 	VECTOR camera_pos;
 	VECTOR camera_rot;
 	VECTOR frustum[6];

@@ -81,6 +81,10 @@ static inline float remap_stick(u8 input) {
 #define DEGS(val) ((val)*(180.0f/3.14f))
 #define M_PIf		3.14159265358979323846f
 
+#define FRAMETIME_TARGET 16680
+#define US_PER_BUDGET 100
+#define BUDGET_US_MARGIN 1000
+
 static const VECTOR chunk_extends = {CHUNK_WIDTH, CHUNK_DEPTH, CHUNK_HEIGHT, 0.0f};
 
 void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_manager_t *chunks)
@@ -144,7 +148,7 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 			rend->camera_pos[2] += direction[2] * (ljoyv * speed) + right[2] * (ljoyh * speed);
 
 			//printf("(%.2f,%.2f) (%.2f,%.2f)\n", ljoyh, ljoyv, rjoyh, rjoyv);
-			//printf("btn: %x, ljoy: (%x,%x), rjoy: (%x,%x)\n", inp->buttons.btns, inp->buttons.ljoy_h,inp->buttons.ljoy_v, inp->buttons.rjoy_h,inp->buttons.rjoy_v);
+			//printf("ok: %x, mode: %d, btn: %x, ljoy: (%x,%x), rjoy: (%x,%x)\n", inp->buttons.ok, inp->buttons.mode, inp->buttons.btns, inp->buttons.ljoy_h,inp->buttons.ljoy_v, inp->buttons.rjoy_h,inp->buttons.rjoy_v);
 		}
 
 		// Moved the camera, so update the matrix
@@ -177,14 +181,13 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 
 		clock_t render_end = clock();
 
-		static const clock_t frametime_target = 16680;
-
-		int budget = frametime_target - (render_end-start_time) - 1000; // Keep 1ms margin
-		if (budget < 0)
-			budget = 0;
+		int budget = FRAMETIME_TARGET - (render_end-start_time) - BUDGET_US_MARGIN; // Keep margin
+		// Never fully stop working
+		if (budget <= 0)
+			budget = US_PER_BUDGET;
 
 		// Work a little bit on the chunks and stuff
-		int start_budget = budget/100;
+		int start_budget = budget/US_PER_BUDGET;
 		budget = chunk_manager_work(chunks, start_budget);
 
 		clock_t end_time = clock();
@@ -193,9 +196,11 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 		if (usperbudget != 0)
 			usperbudget = (end_time-render_end) / usperbudget;
 
-		printf("%ldus / %ldus (%ldus/%ldus/%ldus) (%.2f,%.2f,%.2f) (%.2f,%.2f,%.2f) %d/%d (%ldus/budget) %d/%d\n", end_time-start_time, start_time-last_time, start_render-start_time,
-											render_end-start_render, end_time-render_end, rend->camera_pos[0], rend->camera_pos[1], rend->camera_pos[2],
-											DEGS(rend->camera_rot[0]), DEGS(rend->camera_rot[1]), DEGS(rend->camera_rot[2]), budget, start_budget, usperbudget, cntFrust, cntnFrsut);
+		printf("%s%ldus / %ldus (%ldus/%ldus/%ldus) (%.2f,%.2f,%.2f) (%.2f,%.2f,%.2f) %d/%d (%ldus/budget) %d/%d\n", end_time-start_time > FRAMETIME_TARGET ? "!!OVERLOAD!! " : "",
+											end_time-start_time, start_time-last_time, start_render-start_time, render_end-start_render, end_time-render_end,
+											rend->camera_pos[0], rend->camera_pos[1], rend->camera_pos[2],
+											DEGS(rend->camera_rot[0]), DEGS(rend->camera_rot[1]), DEGS(rend->camera_rot[2]),
+											budget, start_budget, usperbudget, cntFrust, cntnFrsut);
 
 		last_time = start_time;
 
@@ -228,7 +233,7 @@ int main(int argc, char *argv[])
 	// Upload VU1 quad code
 	renderer_upload_vu1(&renderer, &VU1Draw3D_CodeStart, &VU1Draw3D_CodeEnd, 8, 496);
 
-	SETVECTOR(renderer.camera_pos, 0.00f, 240.0f, 0.00f, 1.00f);
+	SETVECTOR(renderer.camera_pos, CHUNK_WIDTH/2.0f, 240.0f, CHUNK_DEPTH/2.0f, 1.00f);
 	SETVECTOR(renderer.camera_rot, 0.00f, 0.00f, M_PIf, 1.00f); // flip upside down...
 
 	renderer_setup(&renderer, 640, 448);

@@ -6,6 +6,7 @@
 #include <string.h>
 #include <malloc.h>
 #include <draw.h>
+#include <math3d.h>
 #include <packet2.h>
 #include <packet2_utils.h>
 #include <dma.h>
@@ -47,6 +48,12 @@ void mesh_update(mesh_t *mesh, u32 count, qvert_t *verts) {
 		return;
 	mesh->vert_count = count;
 	mesh->vertices = verts;
+}
+
+void mesh_update_matrix(mesh_t *mesh) {
+	if (!mesh)
+		return;
+	create_local_world(mesh->local_world, mesh->pos, mesh->rot);
 }
 
 void mesh_set_quad_prim(mesh_t *mesh, texbuffer_t *tbuff) {
@@ -94,9 +101,8 @@ void mesh_draw(mesh_t *mesh, renderer_t *rend) {
 
 	clock_t start = clock();
 
-	MATRIX local_world, local_screen;
-	create_local_world(local_world, mesh->pos, mesh->rot);
-	create_local_screen(local_screen, local_world, rend->world_view, rend->view_screen);
+	MATRIX local_screen;
+	matrix_multiply(local_screen, mesh->local_world, rend->local_screen);
 
 	packet2_t *packet = renderer_get_vif_packet(rend);
 	packet2_reset(packet, 0);
@@ -143,10 +149,11 @@ void mesh_draw(mesh_t *mesh, renderer_t *rend) {
 		// The verts we have left to draw
 		u32 max_verts = mesh->vert_count - vert_drawn;
 
-		u32 to_draw;
+		// Hard coded to be faster but really needs to be computed using the for loop below
+		u32 to_draw = 116;
 		// (to_draw + vert_multiple) because we are looking ahead one vertex mult to see if it fits
 		// Vertex size is 1 for the input & 3 for the GS output (XYZ, RGB, STQ)
-		for (to_draw = 0; (to_draw + vert_multiple) * (1 + 3) < max_qwords && to_draw < max_verts; to_draw += vert_multiple);
+		//for (to_draw = 0; (to_draw + vert_multiple) * (1 + 3) < max_qwords && to_draw < max_verts; to_draw += vert_multiple);
 
 		// In case the count is not divisible by vert_multiple... (shouldn't happen)
 		if (to_draw > max_verts)
@@ -190,8 +197,8 @@ void mesh_draw(mesh_t *mesh, renderer_t *rend) {
 	//printf("Final qw count: %d, %d\n", packet2_get_qw_count(packet), mesh->vert_count);
 
 	// Wait for the old vif packet to finish
-	dma_channel_wait(DMA_CHANNEL_VIF1, 0);
-	//dma_wait_fast();
+	//dma_channel_wait(DMA_CHANNEL_VIF1, 0);
+	dma_wait_fast();
 
 	clock_t wait = clock();
 	// Send the new one
