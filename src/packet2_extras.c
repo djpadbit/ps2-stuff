@@ -51,3 +51,15 @@ packet2_t *packet2_init(packet2_t* packet2, qword_t *base, qword_t *next, u16 qw
 
 	return packet2;
 }
+
+packet2_t* packet2_reset_cfg(packet2_t *packet2, enum Packet2Mode mode, u8 tte, u8 clear_mem) {
+	packet2->next = packet2->base;
+	packet2->vif_code_opened_at = NULL;
+	packet2->tag_opened_at = NULL;
+	packet2->mode = mode;
+	packet2->tte = tte;
+	if (clear_mem)
+		memset(packet2->base, 0, packet2->max_qwords_count << 4);
+
+	return packet2;
+}

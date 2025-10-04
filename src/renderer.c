@@ -1,3 +1,5 @@
+#include "draw_buffers.h"
+#include "graph_vram.h"
 #include <assert.h>
 #include <math.h>
 #include <math3d.h>
@@ -25,8 +27,13 @@ int renderer_init(renderer_t *rend) {
 		if (!packet2_init(&rend->vif_packets[i], NULL, NULL, RENDERER_VIF_PCKT_MAX_QWORDS, P2_TYPE_NORMAL, P2_MODE_CHAIN, 1))
 			return -1;
 	}
+
 	// Init clear packet
 	if (!packet2_init(&rend->clear_packet, NULL, NULL, 35, P2_TYPE_NORMAL, P2_MODE_NORMAL, 0))
+		return -1;
+
+	// Init temp packet
+	if (!packet2_init(&rend->temp_packet, NULL, NULL, RENDERER_TMP_PCKT_MAX_QWORDS, P2_TYPE_NORMAL, P2_MODE_NORMAL, 0))
 		return -1;
 
 	return 0;
@@ -85,7 +92,7 @@ int renderer_setup(renderer_t *rend, u16 width, u16 height) {
 	packet2_update(&rend->clear_packet, draw_finish(rend->clear_packet.next));
 
 	// Setup the drawing env.
-	packet2_t *packet2 = packet2_create(20, P2_TYPE_NORMAL, P2_MODE_NORMAL, 0);
+	packet2_t *packet2 = packet2_reset_cfg(&rend->temp_packet, P2_MODE_NORMAL, 0, 0);
 
 	// This will setup a default drawing environment.
 	packet2_update(packet2, draw_setup_environment(packet2->next, 0, &rend->fb, &rend->zbuff));
@@ -96,11 +103,10 @@ int renderer_setup(renderer_t *rend, u16 width, u16 height) {
 	// Finish setting up the environment.
 	packet2_update(packet2, draw_finish(packet2->next));
 
-	// Now send the packet, no need to wait since it's the first.
+	// Now send the packet
+	dma_channel_wait(DMA_CHANNEL_GIF, 0);
 	dma_channel_send_packet2(packet2, DMA_CHANNEL_GIF, 1);
-	dma_wait_fast();
-
-	packet2_free(packet2);
+	dma_channel_wait(DMA_CHANNEL_GIF, 0);
 
 	return 0;
 }
@@ -113,7 +119,7 @@ void renderer_upload_vu1(renderer_t *rend, u32 *start, u32 *end, u16 dbf_base, u
 	rend->vu1_dbf_offset = dbf_offset;
 
 	u32 packet_size = packet2_utils_get_packet_size_for_program(start, end) + 2; // + 1 for end tag + 1 for dbf
-	packet2_t *packet2 = packet2_create(packet_size, P2_TYPE_NORMAL, P2_MODE_CHAIN, 1);
+	packet2_t *packet2 = packet2_reset_cfg(&rend->temp_packet, P2_MODE_CHAIN, 1, 0);
 
 	printf("size prog: %d %d\n", packet_size, end-start);
 
@@ -124,38 +130,51 @@ void renderer_upload_vu1(renderer_t *rend, u32 *start, u32 *end, u16 dbf_base, u
 	// End tag
 	packet2_utils_vu_add_end_tag(packet2);
 	
+	dma_channel_wait(DMA_CHANNEL_VIF1, 0);
 	dma_channel_send_packet2(packet2, DMA_CHANNEL_VIF1, 1);
 	dma_channel_wait(DMA_CHANNEL_VIF1, 0);
-	
-	packet2_free(packet2);
 }
 
-int renderer_load_texture(texbuffer_t *texbuf, u16 width, u32 psm, u8 *data) {
-	if (!texbuf || !data)
+int renderer_init_texture(texture_t *tex, u16 width, u32 psm, u8 *data) {
+	if (!tex || !data)
 		return -1;
 
 	// Allocate some vram for the texture buffer
-	texbuf->width = 256;
-	texbuf->psm = psm;
-	texbuf->address = graph_vram_allocate(width, width, psm, GRAPH_ALIGN_BLOCK);
-	texbuf->info.width = draw_log2(width);
-	texbuf->info.height = draw_log2(width);
-	texbuf->info.components = psm == GS_PSM_32 ? TEXTURE_COMPONENTS_RGBA : TEXTURE_COMPONENTS_RGB;
-	texbuf->info.function = TEXTURE_FUNCTION_MODULATE;
-	printf("Vram used textu: %d (%d)\n", graph_vram_size(texbuf->width, texbuf->width, texbuf->psm, GRAPH_ALIGN_BLOCK), texbuf->address);
+	tex->buff.width = width;
+	tex->buff.psm = psm;
+	tex->buff.address = GRAPH_VRAM_MAX_WORDS;
+	tex->buff.info.width = draw_log2(width);
+	tex->buff.info.height = draw_log2(width);
+	tex->buff.info.components = psm == GS_PSM_32 ? TEXTURE_COMPONENTS_RGBA : TEXTURE_COMPONENTS_RGB;
+	tex->buff.info.function = TEXTURE_FUNCTION_MODULATE;
+	tex->data = data;
 
-	assert(((int)texbuf->address) >= 0);
+	return 0;
+}
+
+int renderer_upload_texture(renderer_t *rend, texture_t *tex) {
+	if (!tex || !tex->data || !rend)
+		return -1;
+
+	if (tex->buff.address < GRAPH_VRAM_MAX_WORDS)
+		return 0;
+
+	int address = graph_vram_allocate(tex->buff.info.width, tex->buff.info.height, tex->buff.psm, GRAPH_ALIGN_BLOCK);
+	assert(address >= 0);
+	if (address == -1)
+		return -1;
+	tex->buff.address = address;
+	printf("Vram used textu: %d (%d)\n", graph_vram_size(tex->buff.width, tex->buff.width, tex->buff.psm, GRAPH_ALIGN_BLOCK), tex->buff.address);
 
 	// Send the texture to the GS
-	packet2_t *packet2 = packet2_create(50, P2_TYPE_NORMAL, P2_MODE_CHAIN, 0);
+	packet2_t *packet2 = packet2_reset_cfg(&rend->temp_packet, P2_MODE_CHAIN, 0, 0);
 
-	packet2_update(packet2, draw_texture_transfer(packet2->next, data, texbuf->width, texbuf->width, texbuf->psm, texbuf->address, texbuf->width));
+	packet2_update(packet2, draw_texture_transfer(packet2->next, tex->data, tex->buff.width, tex->buff.width, tex->buff.psm, tex->buff.address, tex->buff.width));
 	packet2_update(packet2, draw_texture_flush(packet2->next));
 
+	dma_channel_wait(DMA_CHANNEL_GIF, 0);
 	dma_channel_send_packet2(packet2, DMA_CHANNEL_GIF, 1);
-	dma_wait_fast();
-
-	packet2_free(packet2);
+	dma_channel_wait(DMA_CHANNEL_GIF, 0);
 
 	return 0;
 }
@@ -204,7 +223,7 @@ void renderer_set_perspective(renderer_t *rend, float vfov, float near, float fa
 
 	for (int i=0;i<6;i++) {
 		float invlen = 1.0f / sqrtf(rend->frustum[i][0] * rend->frustum[i][0] + rend->frustum[i][1] * rend->frustum[i][1] + rend->frustum[i][2] * rend->frustum[i][2]);
-		printf("%d - %f\n", i, invlen);
+		//printf("%d - %f\n", i, invlen);
 		rend->frustum[i][0] *= invlen;
 		rend->frustum[i][1] *= invlen;
 		rend->frustum[i][2] *= invlen;
@@ -219,7 +238,7 @@ void renderer_update_matrices(renderer_t *rend) {
 }
 
 
-static inline void vector_scale(VECTOR out, VECTOR in1, float scale) {
+/*static inline void vector_scale(VECTOR out, VECTOR in1, float scale) {
 	out[0] = in1[0]*scale;
 	out[1] = in1[1]*scale;
 	out[2] = in1[2]*scale;
@@ -236,7 +255,7 @@ static inline float vector_dot3f(VECTOR v1, float x, float y, float z) {
 
 
 // 12.183ms all seen, 12.563ms all hidden, 512chunks
-/*static u8 renderer_check_box_plane(VECTOR plane, VECTOR center, VECTOR extents) {
+static u8 renderer_check_box_plane(VECTOR plane, VECTOR center, VECTOR extents) {
 	// Compute the projection interval radius of b onto L(t) = b.c + t * p.n
 	const float r = extents[0] * fabsf(plane[0]) +
 			extents[1] * fabsf(plane[1]) + extents[2] * fabsf(plane[2]);

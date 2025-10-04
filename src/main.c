@@ -35,35 +35,11 @@
 #include <input_manager.h>
 #include <renderer.h>
 #include <mesh.h>
-#include <qdisp.h>
+#include <mesh_quad.h>
 
 #define SETVECTOR(v,x,y,z,w) ((v)[0]=x,(v)[1]=y,(v)[2]=z,(v)[3]=w)
 
-/** 
- * Data of VU1 micro program (draw_3D.vcl/vsm). 
- * How we can use it: 
- * 1. Upload program to VU1. 
- * 2. Send calculated local_screen matrix once per mesh (3D object) 
- * 3. Set buffers size. (double-buffering described below) 
- * 4. Send packet with: lod, clut, tex buffer, scale vector, rgba, verts and sts. 
- * What this program is doing? 
- * 1. Load local_screen. 
- * 2. Zero clipping flag. 
- * 3. Set current buffer start address from TOP register (xtop command) 
- *      To use pararelism, we set two buffers in the VU1. It means, that when 
- *      VU1 is working with one verts packet, we can load second one into another buffer. 
- *      xtop command is automatically switching buffers. I think that AAA games used 
- *      quad buffers (TOP+TOPS) which can give best performance and no VIF_FLUSH should be needed. 
- * 4. Load rest of data. 
- * 5. Prepare GIF tag. 
- * 6. For every vertex: transform, clip, scale, perspective divide. 
- * 7. Send it to GS via XGKICK command. 
- */
-extern u32 VU1Draw3D_CodeStart __attribute__((section(".vudata")));
-extern u32 VU1Draw3D_CodeEnd __attribute__((section(".vudata")));
-
 renderer_t renderer;
-//mesh_t cube_mesh;
 input_manager_t input_man;
 chunk_manager_t chunk_man;
 
@@ -87,7 +63,7 @@ static inline float remap_stick(u8 input) {
 
 static const VECTOR chunk_extends = {CHUNK_WIDTH, CHUNK_DEPTH, CHUNK_HEIGHT, 0.0f};
 
-void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_manager_t *chunks)
+void render(renderer_t *rend, texture_t *texture, input_manager_t *inp, chunk_manager_t *chunks)
 {
 	// Camera look angles
 	float verticalAngle = 0.0f;
@@ -96,6 +72,9 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 	direction[3] = 0.0f;
 	right[1] = 0.0f;
 	right[3] = 0.0f;
+
+	// We only have one type of mesh to render so we prepare only once
+	mesh_quad_prepare_renderer(rend, &chunks->chunk_mesh_type);
 
 	printf("Start of render loop\n");
 
@@ -176,7 +155,7 @@ void render(renderer_t *rend, texbuffer_t *texbuff, input_manager_t *inp, chunk_
 				continue;
 			}
 
-			mesh_draw(&chunks->meshes[i], rend);
+			mesh_quad_draw(&chunks->meshes[i], rend);
 		}
 
 		clock_t render_end = clock();
@@ -230,21 +209,19 @@ int main(int argc, char *argv[])
 	// Init the renderer (VIF Packets & clear packet allocations)
 	renderer_init(&renderer);
 
-	// Upload VU1 quad code
-	renderer_upload_vu1(&renderer, &VU1Draw3D_CodeStart, &VU1Draw3D_CodeEnd, 8, 496);
-
 	SETVECTOR(renderer.camera_pos, CHUNK_WIDTH/2.0f, 240.0f, CHUNK_DEPTH/2.0f, 1.00f);
 	SETVECTOR(renderer.camera_rot, 0.00f, 0.00f, M_PIf, 1.00f); // flip upside down...
 
 	renderer_setup(&renderer, 640, 448);
 
-	// Load the texture into vram.
-	texbuffer_t texture;
-	renderer_load_texture(&texture, 256, GS_PSM_32, terrain);
+	// Init texture
+	texture_t texture;
+	renderer_init_texture(&texture, 256, GS_PSM_32, terrain);
 
 	// Init all the chunks
 	chunk_manager_init(&chunk_man, &texture);
 
+	// Main Loop
 	render(&renderer, &texture, &input_man, &chunk_man);
 
 	// Sleep

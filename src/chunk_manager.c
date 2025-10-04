@@ -1,6 +1,7 @@
 #include "blocks.h"
 #include "facing.h"
-#include "qdisp.h"
+#include "renderer.h"
+#include <mesh_quad.h>
 #include <assert.h>
 #include <chunk_manager.h>
 #include <chunk_data.h>
@@ -129,7 +130,7 @@ static int chunk_manager_compile(chunk_manager_t *chunk_man, int chunk_comp_idx,
 			u8 cblock_zp = z  == CHUNK_DEPTH-1  ? cdat_zp->data[x][0][ry]             : cdat->data[x][z+1][ry];
 			u8 cblock_zn = z  == 0              ? cdat_zn->data[x][CHUNK_DEPTH-1][ry] : cdat->data[x][z-1][ry];
 
-			qvert_t pos;
+			mesh_qvert_t pos;
 			pos.x = x<<4;
 			pos.y = y<<4;
 			pos.z = z<<4;
@@ -140,19 +141,19 @@ static int chunk_manager_compile(chunk_manager_t *chunk_man, int chunk_comp_idx,
 			}*/
 
 			if (chunk_manager_is_transparent(cblock_yp))
-				vsize += qdisp_put_dir(&chunk_man->compiled_chunks[chunk_comp_idx].verts[vsize], pos, FC_UP, chunk_manager_get_texid(cblock, cblock_yp, FC_UP));
+				vsize += mesh_quad_put_dir(&chunk_man->compiled_chunks[chunk_comp_idx].verts[vsize], pos, FC_UP, chunk_manager_get_texid(cblock, cblock_yp, FC_UP));
 			if (chunk_manager_is_transparent(cblock_yn))
-				vsize += qdisp_put_dir(&chunk_man->compiled_chunks[chunk_comp_idx].verts[vsize], pos, FC_DOWN, chunk_manager_get_texid(cblock, cblock_yn, FC_DOWN));
+				vsize += mesh_quad_put_dir(&chunk_man->compiled_chunks[chunk_comp_idx].verts[vsize], pos, FC_DOWN, chunk_manager_get_texid(cblock, cblock_yn, FC_DOWN));
 
 			if (chunk_manager_is_transparent(cblock_xp))
-				vsize += qdisp_put_dir(&chunk_man->compiled_chunks[chunk_comp_idx].verts[vsize], pos, FC_RIGHT, chunk_manager_get_texid(cblock, cblock_xp, FC_RIGHT));
+				vsize += mesh_quad_put_dir(&chunk_man->compiled_chunks[chunk_comp_idx].verts[vsize], pos, FC_RIGHT, chunk_manager_get_texid(cblock, cblock_xp, FC_RIGHT));
 			if (chunk_manager_is_transparent(cblock_xn))
-				vsize += qdisp_put_dir(&chunk_man->compiled_chunks[chunk_comp_idx].verts[vsize], pos, FC_LEFT, chunk_manager_get_texid(cblock, cblock_xn, FC_LEFT));
+				vsize += mesh_quad_put_dir(&chunk_man->compiled_chunks[chunk_comp_idx].verts[vsize], pos, FC_LEFT, chunk_manager_get_texid(cblock, cblock_xn, FC_LEFT));
 
 			if (chunk_manager_is_transparent(cblock_zn))
-				vsize += qdisp_put_dir(&chunk_man->compiled_chunks[chunk_comp_idx].verts[vsize], pos, FC_BACK, chunk_manager_get_texid(cblock, cblock_zn, FC_BACK));
+				vsize += mesh_quad_put_dir(&chunk_man->compiled_chunks[chunk_comp_idx].verts[vsize], pos, FC_BACK, chunk_manager_get_texid(cblock, cblock_zn, FC_BACK));
 			if (chunk_manager_is_transparent(cblock_zp))
-				vsize += qdisp_put_dir(&chunk_man->compiled_chunks[chunk_comp_idx].verts[vsize], pos, FC_FRONT, chunk_manager_get_texid(cblock, cblock_zp, FC_FRONT));
+				vsize += mesh_quad_put_dir(&chunk_man->compiled_chunks[chunk_comp_idx].verts[vsize], pos, FC_FRONT, chunk_manager_get_texid(cblock, cblock_zp, FC_FRONT));
 
 			assert(vsize <= CHUNK_COMPILED_MAX_VERTS);
 		}
@@ -164,7 +165,7 @@ static int chunk_manager_compile(chunk_manager_t *chunk_man, int chunk_comp_idx,
 	chunk_man->compiled_chunks[chunk_comp_idx].progress = progress;
 
 	if (chunk_manager_chunk_ready_inner(chunk_man, chunk_comp_idx)) {
-		mesh_update(&chunk_man->meshes[chunk_comp_idx], chunk_man->compiled_chunks[chunk_comp_idx].size, (qvert_t*)&chunk_man->compiled_chunks[chunk_comp_idx]);
+		mesh_update(&chunk_man->meshes[chunk_comp_idx], chunk_man->compiled_chunks[chunk_comp_idx].size, (mesh_qvert_t*)&chunk_man->compiled_chunks[chunk_comp_idx]);
 		chunk_man->meshes[chunk_comp_idx].pos[0] = cx;
 		chunk_man->meshes[chunk_comp_idx].pos[1] = yoff;
 		chunk_man->meshes[chunk_comp_idx].pos[2] = cz;
@@ -175,7 +176,7 @@ static int chunk_manager_compile(chunk_manager_t *chunk_man, int chunk_comp_idx,
 	return budget;
 }
 
-void chunk_manager_init(chunk_manager_t *chunk_man, texbuffer_t *texture) {
+void chunk_manager_init(chunk_manager_t *chunk_man, texture_t *texture) {
 	if (!chunk_man)
 		return;
 
@@ -198,10 +199,9 @@ void chunk_manager_init(chunk_manager_t *chunk_man, texbuffer_t *texture) {
 	}
 
 	// Init meshes
-	for (int i=0;i<CHUNK_COMPILED_COUNT;i++) {
-		mesh_init(&chunk_man->meshes[i], 0, NULL);
-		mesh_set_quad_prim(&chunk_man->meshes[i], texture);
-	}
+	mesh_quad_type_init(&chunk_man->chunk_mesh_type, texture);
+	for (int i=0;i<CHUNK_COMPILED_COUNT;i++)
+		mesh_init(&chunk_man->meshes[i], &chunk_man->chunk_mesh_type, 0, NULL);
 
 	chunk_man->old_x = 0;
 	chunk_man->old_z = 0;

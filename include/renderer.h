@@ -6,6 +6,7 @@
 #include <draw_buffers.h>
 
 #define RENDERER_VIF_PCKT_MAX_QWORDS 1024
+#define RENDERER_TMP_PCKT_MAX_QWORDS 64
 
 #define RENDERER_DEFAULT_FOV 160.0f
 #define RENDERER_DEFAULT_FAR 2000.0f
@@ -14,6 +15,7 @@
 typedef struct {
 	packet2_t vif_packets[2];
 	packet2_t clear_packet;
+	packet2_t temp_packet;
 	MATRIX view_screen __attribute__((aligned(64)));
 	MATRIX world_view __attribute__((aligned(64)));
 	// Frustum camera transform matrix
@@ -28,9 +30,17 @@ typedef struct {
 	u8 curr_vif_packet;
 } renderer_t;
 
+typedef struct {
+	texbuffer_t buff;
+	void *data;
+} texture_t;
+
+int renderer_init_texture(texture_t *tex, u16 width, u32 psm, u8 *data);
+int renderer_upload_texture(renderer_t *rend, texture_t *tex);
+
 int renderer_init(renderer_t *rend);
 int renderer_setup(renderer_t *rend, u16 width, u16 height);
-int renderer_load_texture(texbuffer_t *texbuf, u16 width, u32 psm, u8 *data);
+
 void renderer_clear(renderer_t *rend);
 // After any camera rotation/translation
 void renderer_update_matrices(renderer_t *rend);

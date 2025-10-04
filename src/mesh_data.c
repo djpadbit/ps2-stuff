@@ -10,7 +10,7 @@
 */
 
 #include <math3d.h>
-#include <qdisp.h>
+#include <mesh_quad.h>
 
 const int cube_vertex_count = 24;
 const int cube_sts_count = 4;
@@ -18,7 +18,7 @@ const int cube_sts_count = 4;
 #if 1
 #define CUBE_VERT_COORD (1<<3)
 
-const qvert_t cube_vertices[24] = {
+const mesh_qvert_t cube_vertices[24] = {
     {{ CUBE_VERT_COORD,  CUBE_VERT_COORD,  CUBE_VERT_COORD, 0 | (1 << (2+8))}}, // right 0
     {{ CUBE_VERT_COORD,  CUBE_VERT_COORD, -CUBE_VERT_COORD, 1 | (1 << (2+8))}},
     {{ CUBE_VERT_COORD, -CUBE_VERT_COORD,  CUBE_VERT_COORD, 2 | (0 << (2+8))}},
