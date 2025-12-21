@@ -23,11 +23,12 @@ typedef struct {
 	VECTOR camera_pos;
 	VECTOR camera_rot;
 	VECTOR frustum[6];
-	framebuffer_t fb;
+	framebuffer_t fb[2];
 	zbuffer_t zbuff;
 	u32 vu1_dbf_base;
 	u32 vu1_dbf_offset;
 	u8 curr_vif_packet;
+	u8 curr_fb;
 } renderer_t;
 
 typedef struct {
@@ -44,6 +45,8 @@ int renderer_setup(renderer_t *rend, u16 width, u16 height);
 void renderer_clear(renderer_t *rend);
 // After any camera rotation/translation
 void renderer_update_matrices(renderer_t *rend);
+// Flip buffer after vsync
+void renderer_flip_buffer(renderer_t *rend);
 // return 1 if in frustum
 u8 renderer_check_box_frustum(renderer_t *rend, VECTOR min, VECTOR size);
 // if any value < 0 => uses default values

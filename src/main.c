@@ -151,7 +151,7 @@ void render(renderer_t *rend, texture_t *texture, input_manager_t *inp, chunk_ma
 				continue;
 
 			u8 in_frust = renderer_check_box_frustum(rend, chunks->meshes[i].pos, (float*)chunk_extends);
-			//chunks->meshes[i].color.val = in_frust ? 0x80008000 : 0x80000080;
+			//chunks->chunk_mesh_type.color.val = in_frust ? 0x80008000 : 0x80000080;
 			if (in_frust)
 				cntFrust++;
 			else {
@@ -188,7 +188,10 @@ void render(renderer_t *rend, texture_t *texture, input_manager_t *inp, chunk_ma
 
 		last_time = start_time;
 
+		// Wait for VSync
 		graph_wait_vsync();
+		// Flip the buffers
+		renderer_flip_buffer(rend);
 	}
 }
 

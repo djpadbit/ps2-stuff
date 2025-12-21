@@ -39,16 +39,38 @@ int renderer_init(renderer_t *rend) {
 	return 0;
 }
 
+static void renderer_set_fb_display(renderer_t *rend, u8 fb) {
+	// Non flicker filter uses RC 2
+	//graph_set_framebuffer(1, rend->fb.address, rend->fb.width, rend->fb.psm, 0, 0);
+	graph_set_framebuffer_filtered(rend->fb[fb].address, rend->fb[fb].width, rend->fb[fb].psm, 0, 0);
+}
+
+static void renderer_set_fb_render(renderer_t *rend, u8 fb) {
+	// Get the temp packet
+	packet2_t *packet2 = packet2_reset_cfg(&rend->temp_packet, P2_MODE_NORMAL, 0, 0);
+
+	// Update the drawing environement
+	packet2_update(packet2, draw_setup_environment(packet2->next, 0, &rend->fb[fb], &rend->zbuff));
+	packet2_update(packet2, draw_primitive_xyoffset(packet2->next, 0, (2048 - rend->fb[fb].width/2.0f), (2048 - rend->fb[fb].height/2.0f)));
+	packet2_update(packet2, draw_finish(packet2->next));
+
+	// Send the packet
+	dma_channel_wait(DMA_CHANNEL_GIF, 0);
+	dma_channel_send_packet2(packet2, DMA_CHANNEL_GIF, 1);
+	dma_channel_wait(DMA_CHANNEL_GIF, 0);
+}
+
 int renderer_setup(renderer_t *rend, u16 width, u16 height) {
 	if (!rend)
 		return -1;
 
-	// Define a 32-bit framebuffer.
-	rend->fb.width = width;
-	rend->fb.height = height;
-	rend->fb.mask = 0;
-	rend->fb.psm = GS_PSM_16S;
-	rend->fb.address = graph_vram_allocate(width, height, rend->fb.psm, GRAPH_ALIGN_PAGE);
+	// Define 2 32-bit framebuffer.
+	rend->fb[0].width = rend->fb[1].width = width;
+	rend->fb[0].height = rend->fb[1].height = height;
+	rend->fb[0].mask = rend->fb[1].mask = 0;
+	rend->fb[0].psm = rend->fb[1].psm = GS_PSM_16S;
+	rend->fb[0].address = graph_vram_allocate(rend->fb[0].width, rend->fb[0].height, rend->fb[0].psm, GRAPH_ALIGN_PAGE);
+	rend->fb[1].address = graph_vram_allocate(rend->fb[1].width, rend->fb[1].height, rend->fb[1].psm, GRAPH_ALIGN_PAGE);
 
 	// Enable the zbuffer.
 	rend->zbuff.enable = DRAW_ENABLE;
@@ -57,10 +79,11 @@ int renderer_setup(renderer_t *rend, u16 width, u16 height) {
 	rend->zbuff.zsm = GS_ZBUF_24;
 	rend->zbuff.address = graph_vram_allocate(width, height, rend->zbuff.zsm, GRAPH_ALIGN_PAGE);
 
-	printf("Vram used frame: %d (%d)\n", graph_vram_size(rend->fb.width, rend->fb.height, rend->fb.psm, GRAPH_ALIGN_PAGE), rend->fb.address);
-	printf("Vram used zbuff: %d (%d)\n", graph_vram_size(rend->fb.width, rend->fb.height, rend->zbuff.zsm, GRAPH_ALIGN_PAGE), rend->zbuff.address);
+	printf("Vram used frame0: %d (%d)\n", graph_vram_size(rend->fb[0].width, rend->fb[0].height, rend->fb[0].psm, GRAPH_ALIGN_PAGE), rend->fb[0].address);
+	printf("Vram used frame1: %d (%d)\n", graph_vram_size(rend->fb[1].width, rend->fb[1].height, rend->fb[1].psm, GRAPH_ALIGN_PAGE), rend->fb[1].address);
+	printf("Vram used zbuff : %d (%d)\n", graph_vram_size(rend->fb[0].width, rend->fb[0].height, rend->zbuff.zsm, GRAPH_ALIGN_PAGE), rend->zbuff.address);
 
-	assert(((int)rend->fb.address) >= 0 && ((int)rend->zbuff.address) >= 0);
+	assert(((int)rend->fb[0].address) >= 0 && ((int)rend->fb[1].address) >= 0 && ((int)rend->zbuff.address) >= 0);
 
 	// Set a default interlaced video mode with flicker filter.
 	graph_set_mode(GRAPH_MODE_INTERLACED, GRAPH_MODE_PAL, GRAPH_MODE_FIELD, GRAPH_ENABLE);
@@ -71,9 +94,9 @@ int renderer_setup(renderer_t *rend, u16 width, u16 height) {
 	// Set black background
 	graph_set_bgcolor(0x80,0x00,0x00);
 
-	// Non flicker filter uses RC 2
-	//graph_set_framebuffer(1, rend->fb.address, rend->fb.width, rend->fb.psm, 0, 0);
-	graph_set_framebuffer_filtered(rend->fb.address, rend->fb.width, rend->fb.psm, 0, 0);
+	// We're rendering to fb 0 first
+	// So we want to display the other fb
+	renderer_set_fb_display(rend, 1);
 
 	graph_enable_output();
 	// Filter
@@ -91,24 +114,19 @@ int renderer_setup(renderer_t *rend, u16 width, u16 height) {
 	packet2_update(&rend->clear_packet, draw_enable_tests(rend->clear_packet.next, 0, &rend->zbuff));
 	packet2_update(&rend->clear_packet, draw_finish(rend->clear_packet.next));
 
-	// Setup the drawing env.
-	packet2_t *packet2 = packet2_reset_cfg(&rend->temp_packet, P2_MODE_NORMAL, 0, 0);
-
-	// This will setup a default drawing environment.
-	packet2_update(packet2, draw_setup_environment(packet2->next, 0, &rend->fb, &rend->zbuff));
-
-	// Now reset the primitive origin to 2048-width/2,2048-height/2.
-	packet2_update(packet2, draw_primitive_xyoffset(packet2->next, 0, (2048 - width/2.0f), (2048 - height/2.0f)));
-
-	// Finish setting up the environment.
-	packet2_update(packet2, draw_finish(packet2->next));
-
-	// Now send the packet
-	dma_channel_wait(DMA_CHANNEL_GIF, 0);
-	dma_channel_send_packet2(packet2, DMA_CHANNEL_GIF, 1);
-	dma_channel_wait(DMA_CHANNEL_GIF, 0);
+	// Update the drawing env to use the fb
+	renderer_set_fb_render(rend, 0);
 
 	return 0;
+}
+
+void renderer_flip_buffer(renderer_t *rend) {
+	// Flip the display logic to look at the buffer we previously finished
+	renderer_set_fb_display(rend, rend->curr_fb);
+	// Flip the buffer
+	rend->curr_fb ^= 1;
+	// Update the rendering environement
+	renderer_set_fb_render(rend, rend->curr_fb);
 }
 
 void renderer_upload_vu1(renderer_t *rend, u32 *start, u32 *end, u16 dbf_base, u16 dbf_offset) {
