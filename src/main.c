@@ -57,7 +57,10 @@ static inline float remap_stick(u8 input) {
 #define DEGS(val) ((val)*(180.0f/3.14f))
 #define M_PIf		3.14159265358979323846f
 
-#define FRAMETIME_TARGET 16680
+// NTSC
+//#define FRAMETIME_TARGET 16680
+// PAL
+#define FRAMETIME_TARGET 20000
 #define US_PER_BUDGET 100
 #define BUDGET_US_MARGIN 1000
 
@@ -66,8 +69,8 @@ static const VECTOR chunk_extends = {CHUNK_WIDTH, CHUNK_DEPTH, CHUNK_HEIGHT, 0.0
 void render(renderer_t *rend, texture_t *texture, input_manager_t *inp, chunk_manager_t *chunks)
 {
 	// Camera look angles
-	float verticalAngle = 0.0f;
-	float horizontalAngle = M_PIf;
+	float verticalAngle = rend->camera_rot[0];
+	float horizontalAngle = rend->camera_rot[1];
 	VECTOR direction, right, up;
 	direction[3] = 0.0f;
 	right[1] = 0.0f;
@@ -138,12 +141,13 @@ void render(renderer_t *rend, texture_t *texture, input_manager_t *inp, chunk_ma
 		chunk_manager_update_pos(chunks, rend->camera_pos[0], rend->camera_pos[2]);
 		clock_t start_render = clock();
 
-		int cntFrust = 0;
-		int cntnFrsut = 0;
+		u16 cntFrust = 0;
+		u16 cntnFrsut = 0;
+		u32 triCnt = 0;
 		// Draw all the visible chunks
 		for (int i=0;i<CHUNK_COMPILED_COUNT;i++) {
 			// Not compiled or empty
-			if (chunk_manager_chunk_empty(&chunk_man, i))
+			if (chunk_manager_chunk_empty(chunks, i))
 				continue;
 
 			u8 in_frust = renderer_check_box_frustum(rend, chunks->meshes[i].pos, (float*)chunk_extends);
@@ -156,6 +160,7 @@ void render(renderer_t *rend, texture_t *texture, input_manager_t *inp, chunk_ma
 			}
 
 			mesh_quad_draw(&chunks->meshes[i], rend);
+			triCnt += chunks->meshes[i].vert_count / 2;
 		}
 
 		clock_t render_end = clock();
@@ -175,11 +180,11 @@ void render(renderer_t *rend, texture_t *texture, input_manager_t *inp, chunk_ma
 		if (usperbudget != 0)
 			usperbudget = (end_time-render_end) / usperbudget;
 
-		printf("%s%ldus / %ldus (%ldus/%ldus/%ldus) (%.2f,%.2f,%.2f) (%.2f,%.2f,%.2f) %d/%d (%ldus/budget) %d/%d\n", end_time-start_time > FRAMETIME_TARGET ? "!!OVERLOAD!! " : "",
+		printf("%s%ldus / %ldus (%ldus/%ldus/%ldus) (%.2f,%.2f,%.2f) (%.2f,%.2f,%.2f) %d/%d (%ldus/budget) %d/%d %dt\n", end_time-start_time > FRAMETIME_TARGET ? "!!OVERLOAD!! " : "",
 											end_time-start_time, start_time-last_time, start_render-start_time, render_end-start_render, end_time-render_end,
 											rend->camera_pos[0], rend->camera_pos[1], rend->camera_pos[2],
 											DEGS(rend->camera_rot[0]), DEGS(rend->camera_rot[1]), DEGS(rend->camera_rot[2]),
-											budget, start_budget, usperbudget, cntFrust, cntnFrsut);
+											budget, start_budget, usperbudget, cntFrust, cntnFrsut, triCnt);
 
 		last_time = start_time;
 
@@ -210,13 +215,13 @@ int main(int argc, char *argv[])
 	renderer_init(&renderer);
 
 	SETVECTOR(renderer.camera_pos, CHUNK_WIDTH/2.0f, 240.0f, CHUNK_DEPTH/2.0f, 1.00f);
-	SETVECTOR(renderer.camera_rot, 0.00f, 0.00f, M_PIf, 1.00f); // flip upside down...
+	SETVECTOR(renderer.camera_rot, M_PIf/2.0f, M_PIf, M_PIf, 1.00f); // flip upside down... (PI in z)
 
-	renderer_setup(&renderer, 640, 448);
+	renderer_setup(&renderer, 640, 512);
 
 	// Init texture
 	texture_t texture;
-	renderer_init_texture(&texture, 256, GS_PSM_32, terrain);
+	renderer_init_texture(&texture, 256, GS_PSM_24, terrain);
 
 	// Init all the chunks
 	chunk_manager_init(&chunk_man, &texture);

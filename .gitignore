@@ -31,3 +31,5 @@ state
 verts
 compile_commands.json
 *.sublime-workspace
+
+src/resources/*

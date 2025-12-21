@@ -223,7 +223,8 @@ void mesh_quad_draw(mesh_t *mesh, renderer_t *rend) {
 			packet2_utils_vu_add_start_program(packet, 0);
 		} else { // Or continue it if we aren't at the start anymore
 			packet2_chain_open_cnt(packet, 0, 0, 0);
-			packet2_vif_flushe(packet, 0);
+			// Should be able to use flushe here but it's fucky
+			packet2_vif_flush(packet, 0);
 			packet2_vif_mscnt(packet, 0);
 			packet2_chain_close_tag(packet);
 		}
@@ -246,7 +247,7 @@ void mesh_quad_draw(mesh_t *mesh, renderer_t *rend) {
 
 	clock_t wait = clock();
 	// Send the new one
-	dma_channel_send_packet2(packet, DMA_CHANNEL_VIF1, 0);
+	dma_channel_send_packet2(packet, DMA_CHANNEL_VIF1, 1);
 
 	clock_t send = clock();
 

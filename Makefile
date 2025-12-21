@@ -26,6 +26,9 @@ OBJ_DIR := objs
 # Should we keep VSM output
 KEEP_VSM := true
 
+# For ps2client
+PS2_HOST := 192.168.69.2
+
 # ---------------------------------
 
 # Command for ensuring the output directory for the rule exists.
@@ -78,10 +81,10 @@ cleanc:
 	rm -rf $(OBJ_DIR) $(EE_BIN) $(RES_CONV)
 
 run: $(EE_BIN)
-	ps2client execee host:$(EE_BIN)
+	ps2client -h $(PS2_HOST) execee host:$(EE_BIN)
 
 reset:
-	ps2client reset
+	ps2client -h $(PS2_HOST) reset
 
 # ---------------------------------
 

@@ -63,7 +63,7 @@ int renderer_setup(renderer_t *rend, u16 width, u16 height) {
 	assert(((int)rend->fb.address) >= 0 && ((int)rend->zbuff.address) >= 0);
 
 	// Set a default interlaced video mode with flicker filter.
-	graph_set_mode(GRAPH_MODE_INTERLACED, GRAPH_MODE_NTSC, GRAPH_MODE_FIELD, GRAPH_ENABLE);
+	graph_set_mode(GRAPH_MODE_INTERLACED, GRAPH_MODE_PAL, GRAPH_MODE_FIELD, GRAPH_ENABLE);
 
 	// Set the screen up
 	graph_set_screen(0, 0, width, height);

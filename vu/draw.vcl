@@ -129,7 +129,7 @@ runStart:
                                                             ; bit, which tells the GS not to perform a drawing kick on this
                                                             ; triangle.
 
-        isw.w       iADC,      2(destAddress)
+        isw.w       iADC,      2(destAddress)           ; Write into .w of XYZ2 the iADC to kick or not
         
         div         q,         vf00[w],     vertex[w]   ; perspective divide (1/vert[w]):
         mulq.xyz    vertex,    vertex,      q
@@ -158,7 +158,7 @@ runStart:
         ;//////////// --- Store data --- ////////////
         sqi modStq,      (destAddress++)      ; STQ
         sqi rgba,        (destAddress++)      ; RGBA ; q is grabbed from stq
-        sqi.xyz vertex,  (destAddress++)      ; XYZ2
+        sqi.xyz vertex,  (destAddress++)      ; XYZ2 (.w is written before)
         ;////////////////////////////////////////////
 
         iaddi   vertCount,  vertCount,  -1         ; decrement the loop counter 
@@ -171,11 +171,11 @@ runStart:
     xgkick kickAddress ; dispatch to the GS rasterizer.
 
     --barrier
-    --cont
 
-    xtop    iBase ; Fetch the new top pointer
-    b runStart
-    ;ibne    runCount,  VI00,   runStart ; and repeat if needed
+    --cont        ; Wait for the next batch of data
+
+    xtop    iBase       ; Fetch the new top pointer
+    b       runStart    ; And jump back at the start of loading the data
 
 --exit
 --endexit
