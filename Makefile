@@ -46,7 +46,7 @@ RESOURCES_FILES := $(shell find $(RESOURCE_DIR)/ -type f -name '*.raw')
 
 RES_CONV := $(patsubst %.raw,$(EE_SRC_DIR)/%.c,$(RESOURCES_FILES))
 EE_OBJS := $(patsubst %.c,$(OBJ_DIR)/ee/%.o,$(EE_SRC_FILES)) $(patsubst %.c,$(OBJ_DIR)/ee/%.o,$(RES_CONV))
-EE_DEPS := $(patsubst %.o,$(OBJ_DIR)/ee/%.d,$(EE_OBJS))
+EE_DEPS := $(patsubst %.o,%.d,$(EE_OBJS))
 EE_OBJS += $(patsubst %.vcl,$(OBJ_DIR)/vu/%.o,$(EE_VU_SRC_FILES))
 EE_VU_VSM_FILES := $(patsubst %.vcl,%.vsm,$(EE_VU_SRC_FILES))
 
