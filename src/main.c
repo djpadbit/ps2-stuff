@@ -64,7 +64,7 @@ static inline float remap_stick(u8 input) {
 #define US_PER_BUDGET 100
 #define BUDGET_US_MARGIN 1000
 
-static const VECTOR chunk_extends = {CHUNK_WIDTH, CHUNK_DEPTH, CHUNK_HEIGHT, 0.0f};
+static const VECTOR chunk_extends = {CHUNK_WIDTH, CHUNK_HEIGHT, CHUNK_DEPTH, 0.0f};
 
 void render(renderer_t *rend, texture_t *texture, input_manager_t *inp, chunk_manager_t *chunks)
 {

@@ -14,7 +14,7 @@ int chunkdata_init(chunkdata_t *data, s64 x, s64 z) {
 }
 
 int chunkdata_ready(chunkdata_t *data) {
-	return data ? data->xoffset == 16 : 0;
+	return data ? data->xoffset == CHUNK_WIDTH : 0;
 }
 
 int chunkdata_generate(chunkdata_t *data, int budget) {
